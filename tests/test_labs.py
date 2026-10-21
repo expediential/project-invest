@@ -9,8 +9,9 @@ from project_invest.container import build_container
 
 def _settings(tmp_path: Path) -> Settings:
     return Settings(
+        environment="test",
         market_data_provider="mock",
-        allow_mock_fallback=False,
+        allow_mock_data=True,
         storage_backend="local",
         data_root=tmp_path / "lake",
         use_market_universes=False,

@@ -3,9 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from project_invest.config import Settings, settings
-from project_invest.domain.models import ExecutionMode, PortfolioSnapshot, RiskLimits
+from project_invest.domain.models import ExecutionMode, RiskLimits
 from project_invest.execution.base import ExecutionEngine
-from project_invest.execution.live import LiveExecutionEngine
 from project_invest.execution.paper import PaperExecutionEngine
 from project_invest.providers.mock import MockMarketDataProvider
 from project_invest.providers.yahoo import YahooFinanceProvider
@@ -63,10 +62,7 @@ def build_container(active_settings: Settings | None = None) -> ServiceContainer
     storage = build_storage(current_settings)
 
     primary_provider = _build_market_provider(current_settings.market_data_provider)
-    fallback_provider = None
-    if current_settings.market_data_provider != "mock" and current_settings.allow_mock_fallback:
-        fallback_provider = MockMarketDataProvider()
-    ingestion = MarketDataIngestionService(primary_provider, storage, fallback_provider=fallback_provider)
+    ingestion = MarketDataIngestionService(primary_provider, storage)
 
     if current_settings.sentiment_provider == "local":
         sentiment_provider = LocalSentimentProvider(current_settings.sentiment_data_root)
@@ -204,6 +200,7 @@ def build_container(active_settings: Settings | None = None) -> ServiceContainer
         confirmation_lookback_bars=current_settings.confirmation_lookback_bars,
         default_symbols=resolved_symbols,
         execution_markets=current_settings.execution_markets,
+        allow_mock_data=current_settings.allow_mock_data,
     )
 
     optimizer = PortfolioOptimizer()
@@ -237,7 +234,6 @@ def _build_market_provider(provider_name: str):
 
 
 def _build_execution_engine(settings: Settings, paper_broker: PaperBroker) -> ExecutionEngine:
-    if settings.execution_mode == ExecutionMode.LIVE.value:
-        fallback = PortfolioSnapshot.bootstrap(settings.starting_capital)
-        return LiveExecutionEngine(adapter=None, fallback_portfolio=fallback)
+    if settings.execution_mode != ExecutionMode.PAPER.value:
+        raise RuntimeError("Only paper execution is supported; live execution is disabled.")
     return PaperExecutionEngine(paper_broker)

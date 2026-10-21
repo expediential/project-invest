@@ -723,6 +723,7 @@ def render_dashboard(app_name: str) -> str:
         <div class="topbar-header">
           <div class="brand">{app_name} Terminal</div>
           <div class="controls">
+            <label>Operational token <input id="operational-token" type="password" autocomplete="off"></label>
             <button class="primary" id="run-cycle">Run Research Cycle</button>
             <button class="secondary" id="run-trade">Run Trading Cycle</button>
             <button id="refresh">Refresh</button>
@@ -1058,9 +1059,15 @@ def render_dashboard(app_name: str) -> str:
       }}
 
       async function postJson(url, body = {{}}) {{
+        const tokenInput = document.getElementById("operational-token");
+        const token = tokenInput ? tokenInput.value.trim() : "";
+        const headers = {{ "Content-Type": "application/json" }};
+        if (token) {{
+          headers.Authorization = `Bearer ${{token}}`;
+        }}
         const response = await fetch(url, {{
           method: "POST",
-          headers: {{ "Content-Type": "application/json" }},
+          headers,
           body: JSON.stringify(body)
         }});
         const text = await response.text();

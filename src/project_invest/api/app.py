@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
 from contextlib import asynccontextmanager
 from contextlib import suppress
 
@@ -143,6 +144,20 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 def get_container(request: Request) -> ServiceContainer:
     return request.app.state.container
+
+
+def require_operational_access(request: Request) -> None:
+    """Fail closed unless an explicitly configured bearer token authorizes an operation."""
+    configured_token = get_container(request).settings.api_auth_token
+    if configured_token is None:
+        raise HTTPException(status_code=503, detail="Operational API controls are disabled.")
+
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, supplied_token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not supplied_token:
+        raise HTTPException(status_code=401, detail="Bearer authentication is required.")
+    if not secrets.compare_digest(configured_token.get_secret_value(), supplied_token):
+        raise HTTPException(status_code=403, detail="Invalid operational credentials.")
 
 
 def _build_launch_hint(
@@ -336,6 +351,7 @@ async def universe(request: Request) -> dict[str, object]:
 
 @app.post("/api/research/run")
 async def run_research(request: Request, payload: ResearchRunRequest | None = None):
+    require_operational_access(request)
     container = get_container(request)
     symbols = payload.symbols if payload and payload.symbols else None
     try:
@@ -348,6 +364,7 @@ async def run_research(request: Request, payload: ResearchRunRequest | None = No
 
 @app.post("/api/trading/run")
 async def run_trading(request: Request, payload: ResearchRunRequest | None = None):
+    require_operational_access(request)
     container = get_container(request)
     symbols = payload.symbols if payload and payload.symbols else None
     try:

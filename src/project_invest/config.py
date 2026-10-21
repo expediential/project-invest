@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_name: str = "Project Invest"
-    execution_mode: str = "paper"
-    market_data_provider: str = "mock"
+    environment: Literal["development", "test", "production"] = "development"
+    execution_mode: Literal["paper"] = "paper"
+    market_data_provider: Literal["yahoo", "mock"] = "yahoo"
+    allow_mock_data: bool = False
     allow_mock_fallback: bool = False
+    api_auth_token: SecretStr | None = None
     storage_backend: str = "local"
     research_symbols: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["RELIANCE.NS", "TCS.NS", "INFY.NS"]
@@ -149,14 +152,12 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return []
 
-    @field_validator("execution_mode", mode="before")
+    @field_validator("execution_mode", "market_data_provider", "environment", mode="before")
     @classmethod
-    def parse_execution_mode(cls, value: str) -> str:
+    def normalize_enum_value(cls, value: str) -> str:
         if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in {"paper", "live"}:
-                return normalized
-        return "paper"
+            return value.strip().lower()
+        return value
 
     @field_validator("storage_backend", mode="before")
     @classmethod
@@ -175,6 +176,29 @@ class Settings(BaseSettings):
             if normalized in {"neutral", "local"}:
                 return normalized
         return "neutral"
+
+    @model_validator(mode="after")
+    def validate_safe_operation(self) -> "Settings":
+        if self.execution_mode != "paper":
+            raise ValueError("Only paper execution is supported; live execution is disabled.")
+        if self.allow_mock_fallback:
+            raise ValueError("Mock-data fallback is disabled. Use an explicit development/test mock provider instead.")
+        if self.market_data_provider == "mock" and (
+            self.environment not in {"development", "test"} or not self.allow_mock_data
+        ):
+            raise ValueError(
+                "Mock market data requires PROJECT_INVEST_ENVIRONMENT=development or test "
+                "and PROJECT_INVEST_ALLOW_MOCK_DATA=true."
+            )
+        if any((self.research_loop_enabled, self.trading_loop_enabled, self.live_loop_enabled)):
+            raise ValueError(
+                "Embedded API loops are disabled. Run exactly one standalone research or trading worker."
+            )
+        if self.max_risk_per_trade <= 0 or self.max_risk_per_trade > 1:
+            raise ValueError("max_risk_per_trade must be greater than 0 and no more than 1.")
+        if self.order_slippage_bps < 0 or self.fee_bps < 0:
+            raise ValueError("order_slippage_bps and fee_bps must be non-negative.")
+        return self
 
 
 settings = Settings()

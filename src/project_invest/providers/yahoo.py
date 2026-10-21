@@ -82,6 +82,7 @@ class YahooFinanceProvider:
                     low=low_price,
                     close=close_price,
                     volume=volume,
+                    data_source=self.name,
                 )
             )
 

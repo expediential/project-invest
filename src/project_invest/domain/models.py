@@ -68,6 +68,7 @@ class Candle(BaseModel):
     low: float
     close: float
     volume: float = 0.0
+    data_source: str = "unknown"
 
 
 class FeatureRow(BaseModel):

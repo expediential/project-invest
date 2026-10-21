@@ -38,6 +38,7 @@ class MockMarketDataProvider:
                     low=round(low, 2),
                     close=round(close, 2),
                     volume=volume,
+                    data_source=self.name,
                 )
             )
             price = close

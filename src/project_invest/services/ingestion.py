@@ -12,10 +12,8 @@ class MarketDataIngestionService:
         self,
         primary_provider: MarketDataProvider,
         candle_repository: CandleRepository,
-        fallback_provider: MarketDataProvider | None = None,
     ) -> None:
         self.primary_provider = primary_provider
-        self.fallback_provider = fallback_provider
         self.candle_repository = candle_repository
 
     async def ingest_symbol(self, symbol: str, interval: str, lookback_bars: int) -> tuple[str, list[Candle]]:
@@ -30,25 +28,16 @@ class MarketDataIngestionService:
             if cached_candles:
                 return "cache", cached_candles[-lookback_bars:]
 
-            if self.fallback_provider is None:
-                raise MarketDataProviderError(
-                    f"{symbol} {interval}: {primary_error}"
-                ) from primary_error
-            provider_name = getattr(self.fallback_provider, "name", "fallback")
-            try:
-                candles = await self.fallback_provider.fetch_candles(symbol, interval, lookback_bars)
-            except MarketDataProviderError as fallback_error:
-                raise MarketDataProviderError(
-                    f"{symbol} {interval}: primary provider failed ({primary_error}); "
-                    f"fallback provider failed ({fallback_error})"
-                ) from fallback_error
+            raise MarketDataProviderError(f"{symbol} {interval}: {primary_error}") from primary_error
 
-        normalized = self._normalize(candles)
+        normalized = self._normalize(candles, provider_name)
+        if not normalized:
+            raise MarketDataProviderError(f"{symbol} {interval}: provider returned no valid candles.")
         self.candle_repository.store_candles(symbol, interval, normalized, stage="raw")
         self.candle_repository.store_candles(symbol, interval, normalized, stage="processed")
         return provider_name, normalized
 
-    def _normalize(self, candles: list[Candle]) -> list[Candle]:
+    def _normalize(self, candles: list[Candle], provider_name: str | None = None) -> list[Candle]:
         deduped: dict[str, Candle] = {}
         for candle in candles:
             if candle.close <= 0:
@@ -58,6 +47,7 @@ class MarketDataIngestionService:
                     "high": max(candle.high, candle.open, candle.close),
                     "low": min(candle.low, candle.open, candle.close),
                     "volume": max(candle.volume, 0.0),
+                    "data_source": provider_name or candle.data_source,
                 }
             )
             deduped[normalized.timestamp.isoformat()] = normalized

@@ -67,6 +67,7 @@ class TradingLab:
         confirmation_lookback_bars: int,
         default_symbols: list[str],
         execution_markets: list[str],
+        allow_mock_data: bool,
     ) -> None:
         self.ingestion = ingestion
         self.feature_engine = feature_engine
@@ -92,6 +93,7 @@ class TradingLab:
         self.confirmation_lookback_bars = confirmation_lookback_bars
         self.default_symbols = default_symbols
         self.execution_markets = {market.upper() for market in execution_markets}
+        self.allow_mock_data = allow_mock_data
 
     async def run_cycle(self, symbols: list[str] | None = None) -> ResearchCycleReport:
         active_symbols = symbols or self.default_symbols
@@ -104,6 +106,7 @@ class TradingLab:
 
         for symbol in active_symbols:
             provider_name, candles = await self.ingestion.ingest_symbol(symbol, self.interval, self.lookback_bars)
+            self._assert_tradable_market_data(symbol, candles)
             features = self.feature_engine.build_feature_rows(candles)
             self.feature_repository.store_features(symbol, self.interval, features)
             latest_feature = features[-1] if features else None
@@ -349,3 +352,11 @@ class TradingLab:
         if market == "US" and ("NASDAQ" in self.execution_markets or "NYSE" in self.execution_markets):
             return True
         return False
+
+    def _assert_tradable_market_data(self, symbol: str, candles: list[Candle]) -> None:
+        if not candles:
+            raise RuntimeError(f"{symbol}: no market data is available for paper execution.")
+        if any(candle.data_source == "mock" for candle in candles) and not self.allow_mock_data:
+            raise RuntimeError(f"{symbol}: mock-origin data is not eligible for paper execution.")
+        if any(candle.data_source == "unknown" for candle in candles) and not self.allow_mock_data:
+            raise RuntimeError(f"{symbol}: market-data provenance is unknown; paper execution is blocked.")
