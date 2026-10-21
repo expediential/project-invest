@@ -21,3 +21,9 @@
    ```
 
 12. **Next phase:** Phase One stabilization. Acceptance requires strict paper-only configuration, no production mock fallback, a single durable worker owner, atomic/recoverable state, correct time-aware validation basics, secured control routes, and passing relevant tests.
+
+## 2026-10-21 — Phase One: security and research integrity (in progress)
+
+1. **Changes completed:** strict paper-only settings; protected operational API routes; no runtime mock fallback; mock provenance and paper-trading rejection; point-in-time local sentiment; candidate-validation holdout; strict promotion block; and separate API/research/trading worker roles.
+2. **Verification:** targeted security, API, runtime, sentiment, feature, backtest, promotion, and lab tests passed during development. The complete suite and documentation/CI checks remain to be run before Phase One can be claimed complete.
+3. **Residual limitations:** worker coordination is not yet durable across processes; storage writes are not transactional; migrations, robust readiness checks, and persistent experiment/holdout records are not implemented.

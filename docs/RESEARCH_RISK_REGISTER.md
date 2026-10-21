@@ -23,4 +23,8 @@
 
 ## Risk acceptance
 
+### Mitigation update — 2026-10-21
+
+R-01 through R-05 have been materially reduced by bearer-protected operational routes, paper-only validation, explicit mock provenance, point-in-time local sentiment, and a candidate-validation holdout. They are not eliminated: bearer tokens require secure deployment and rotation, and the final holdout is not yet persisted as an experiment artifact. R-10, R-11, R-13, R-14, R-16, and R-18 remain open.
+
 No critical risk is accepted for Phase One. The current application may remain a local development prototype only. It must not be described as production-ready, profitable, autonomous in an unrestricted sense, or suitable for live trading.

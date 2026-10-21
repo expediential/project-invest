@@ -62,7 +62,8 @@ Recommended production values:
 ```env
 PROJECT_INVEST_EXECUTION_MODE=paper
 PROJECT_INVEST_MARKET_DATA_PROVIDER=yahoo
-PROJECT_INVEST_ALLOW_MOCK_FALLBACK=true
+PROJECT_INVEST_ALLOW_MOCK_DATA=false
+PROJECT_INVEST_ALLOW_MOCK_FALLBACK=false
 PROJECT_INVEST_STORAGE_BACKEND=postgres
 PROJECT_INVEST_STORAGE_CACHE_ENABLED=true
 PROJECT_INVEST_POSTGRES_DSN=postgresql://project_invest:project_invest@postgres:5432/project_invest
@@ -85,8 +86,7 @@ Notes:
 
 - keep all `*_LOOP_ENABLED` flags set to `false`
   - the dedicated worker containers own the long-running loops in production
-- `PROJECT_INVEST_ALLOW_MOCK_FALLBACK=true`
-  - keeps the platform alive if Yahoo has a transient failure
+- Provider failures must block new paper entries; mock fallback is intentionally disabled.
 - start with `NSE` only
   - then add more universes after the box is stable
 
@@ -143,10 +143,12 @@ git pull
 docker compose -f docker-compose.prod.yml up --build -d
 ```
 
-## 8. Optional hardening
+## 8. Required deployment hardening
 
 - put Cloudflare or another proxy in front
 - add HTTPS with Caddy, Traefik, or Nginx + Certbot
+- set a strong `PROJECT_INVEST_API_AUTH_TOKEN` and do not expose it in logs
+- use HTTPS and network access controls before exposing the dashboard
 - change the default Postgres password
 - add VM-level firewall restrictions
 - add backups for the Postgres volume

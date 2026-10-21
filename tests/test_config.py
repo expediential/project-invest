@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
@@ -35,3 +36,12 @@ def test_mock_data_requires_explicit_test_or_development_opt_in() -> None:
         allow_mock_data=True,
     )
     assert configured.market_data_provider == "mock"
+
+
+def test_documented_environment_example_loads_safely() -> None:
+    example = Path(__file__).parents[1] / ".env.example"
+    configured = Settings(_env_file=example)
+
+    assert configured.execution_mode == "paper"
+    assert configured.market_data_provider == "yahoo"
+    assert configured.allow_mock_fallback is False

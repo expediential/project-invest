@@ -1,192 +1,118 @@
 # Project Invest
 
-Project Invest is a personal quantitative research platform designed to act like an always-on trading laboratory rather than a single strategy bot.
+[![CI](https://github.com/expediential/project-invest/actions/workflows/ci.yml/badge.svg)](https://github.com/expediential/project-invest/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-The initial foundation in this repository focuses on five things:
+Project Invest is an experimental, paper-only quantitative research workspace. It collects permitted market data, engineers simple features, evaluates bounded strategy candidates, applies independent risk controls, and records simulated portfolio activity. Its purpose is to make research decisions inspectable—not to predict markets or promise returns.
 
-- continuous market data ingestion through pluggable providers
-- repository-backed storage that can run on local files today and switch to Postgres later
-- automatic strategy evolution and historical backtesting
-- an execution-agnostic trading layer with paper mode active by default
-- realistic paper trading, risk controls, and an API dashboard
+> **Status:** early research software. Paper fills, costs, and performance are simulated. No broker adapter or live trading is supported.
 
-## Current architecture
+## What works today
 
-```text
-Market Data Providers
-        ->
-Ingestion + Normalization
-        ->
-Repository Layer
-        ->
-Storage Backend (Local Files or Postgres)
-        ->
-Optional Redis Cache
-        ->
-Feature Engineering
-        ->
-Strategy Evolution
-        ->
-Backtesting
-        ->
-Execution Engine + Risk
-        ->
-FastAPI Control Center
+- FastAPI dashboard and read-only health, market, portfolio, trade, event, and analytics endpoints.
+- Explicit research-only and paper-trading worker modes, local JSON storage, optional Postgres/Redis storage paths, and Yahoo or explicitly opted-in mock data.
+- Basic technical features, three bounded rule-based strategy families, cost-aware backtests, promotion gates, risk limits, and paper portfolio accounting.
+- Point-in-time local sentiment observations and a walk-forward candidate validation path that excludes a final holdout.
+
+Experiments, durable job queues, model training, rigorous portfolio optimization, external event ingestion, and Cosmos/HPC support are planned—not implemented.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  P[Yahoo or explicit test mock provider] --> I[Ingestion and provenance]
+  I --> S[Local JSON or Postgres storage]
+  S --> F[Feature engineering]
+  F --> R[Strategy evaluation and validation]
+  R --> G[Promotion and risk gates]
+  G -->|research worker| E[Research-only report]
+  G -->|paper worker only| B[Paper broker]
+  B --> S
+  A[FastAPI dashboard/API] --> S
 ```
-
-This version is intentionally modular so a future broker adapter can replace the paper broker without changing the research pipeline.
-
-## What is implemented
-
-- `mock` and `yahoo` market data providers behind a shared interface
-- repository abstractions for candles, features, portfolio state, trades, and reports
-- local-file storage plus backend selection for future Postgres/Redis deployment
-- feature engineering for moving averages, RSI, momentum, volatility, and volume z-score
-- a genetic strategy evolution engine that mutates strategy genomes
-- a backtester with slippage, fees, stop loss, take profit, and Sharpe/drawdown metrics
-- a paper broker with capital tracking, exposure controls, and order rejection logic
-- an execution layer abstraction with `paper` and `live` modes
-- a FastAPI app with endpoints for health, market data, features, portfolio state, and research runs
-- a lightweight dashboard served from the API root
 
 ## Quick start
 
-1. Create a virtual environment and install the project:
+Windows PowerShell:
 
-   ```powershell
-   pip install -e .[dev]
-   ```
+```powershell
+python -m venv .venv
+.venv\Scripts\python -m pip install -e .[dev]
+Copy-Item .env.example .env
+# Set PROJECT_INVEST_API_AUTH_TOKEN in .env before using operational routes.
+.venv\Scripts\python -m project_invest api --host 127.0.0.1 --port 8000
+```
 
-2. Copy the example environment file:
+Linux/macOS:
 
-   ```powershell
-   Copy-Item .env.example .env
-   ```
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
+cp .env.example .env
+.venv/bin/python -m project_invest api --host 127.0.0.1 --port 8000
+```
 
-3. Run the full local stack:
+Open `http://127.0.0.1:8000`. Read-only routes are available without a token. Operational routes require `Authorization: Bearer <PROJECT_INVEST_API_AUTH_TOKEN>`; if the token is not configured, they return a safe `503` response.
 
-   ```powershell
-   python -m project_invest launch --host 0.0.0.0 --port 8000
-   ```
+## Running the system
 
-4. Open [http://localhost:8000](http://localhost:8000)
+```powershell
+# Research only; cannot submit paper orders.
+.venv\Scripts\python -m project_invest worker --mode research
 
-5. Or use the bundled Windows launcher:
+# Paper-trading worker. It still rejects live execution and mock/unknown data.
+.venv\Scripts\python -m project_invest worker --mode trading
 
-   ```cmd
-   run-project-invest.cmd
-   ```
+# Convenience launcher: API plus the two separate workers.
+.venv\Scripts\python -m project_invest launch --host 127.0.0.1 --port 8000
+```
 
-6. Trigger a research cycle:
+Do not run more than one worker of a given role against the same storage until the planned durable lease mechanism exists.
 
-   ```powershell
-   Invoke-RestMethod -Method Post http://localhost:8000/api/research/run
-   ```
+## Configuration and data safety
 
-## Runtime entrypoints
+| Variable | Safe default | Meaning |
+| --- | --- | --- |
+| `PROJECT_INVEST_EXECUTION_MODE` | `paper` | The only supported execution mode; `live` fails startup. |
+| `PROJECT_INVEST_MARKET_DATA_PROVIDER` | `yahoo` | Market provider. |
+| `PROJECT_INVEST_ALLOW_MOCK_DATA` | `false` | Mock data requires this plus `development` or `test` environment. |
+| `PROJECT_INVEST_API_AUTH_TOKEN` | unset | Required for cycle-triggering API routes. Never commit it. |
+| `PROJECT_INVEST_STORAGE_BACKEND` | `local` | `local` or configured `postgres`. |
+| `PROJECT_INVEST_RESEARCH_LOOP_ENABLED` | `false` | Embedded API loops are unsupported and fail startup. |
 
-- API server
+Yahoo availability, timestamps, corporate actions, exchange calendars, and intraday coverage are limitations. Provider failures do not silently turn into synthetic data. Mock candles are clearly marked and are rejected at the paper-trading boundary unless deliberately enabled for tests/development.
 
-  ```powershell
-  python -m project_invest api --host 0.0.0.0 --port 8000
-  ```
+## Research and paper-trading limitations
 
-- Full local stack from one command
+Backtests include configured fees and slippage but remain simplified simulations. A strategy is selected from development data; walk-forward validation reserves a final holdout from candidate validation. Local historical sentiment requires both publication and observation timestamps—legacy static sentiment is not used to reconstruct historical features. Results remain vulnerable to data quality, survivorship bias, market-regime changes, execution assumptions, and multiple-testing bias.
 
-  ```powershell
-  python -m project_invest launch --host 0.0.0.0 --port 8000
-  ```
+Paper orders model fills, fees, cash, positions, realized P&L, and marked-to-market equity. They are not real orders or realized financial returns. Risk controls are independent of strategy scores, but this prototype is not production-ready.
 
-- Full local stack with a Cloudflare public URL
+## Tests and CI
 
-  ```powershell
-  python -m project_invest launch --host 0.0.0.0 --port 8000 --public
-  ```
+```powershell
+.venv\Scripts\python -m compileall -q src
+.venv\Scripts\python -m pytest -q --basetemp .tmp_pytest -p no:cacheprovider
+```
 
-- One research cycle
+CI runs these checks on pushes to `main` and external pull requests. Tests use deterministic fixtures and do not require market-provider access, broker credentials, or private data.
 
-  ```powershell
-  python -m project_invest run-once
-  ```
+## Docker and deployment
 
-- One trading cycle
+Docker Compose files exist for local experimentation and a VM topology, but they require a deliberately configured `.env`. Before any accessible deployment, use HTTPS, restrict network access, configure an operational token, keep paper mode, and set mock fallback/data to false. The current deployment guides require revision before public deployment; do not treat them as a production hardening guide.
 
-  ```powershell
-  python -m project_invest trade-once
-  ```
+## Documentation
 
-- Continuous research worker
+- [Architecture](ARCHITECTURE.md)
+- [Implementation audit](docs/IMPLEMENTATION_AUDIT.md)
+- [Research risk register](docs/RESEARCH_RISK_REGISTER.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
+- [MIT License](LICENSE)
 
-  ```powershell
-  python -m project_invest worker --mode research
-  ```
+Cosmos/HPC is a future optional research accelerator. It must remain separate from order execution and is not integrated or assumed available.
 
-- Continuous trading worker
+## Contributing and license
 
-  ```powershell
-  python -m project_invest worker --mode trading
-  ```
-
-If you use `launch`, do not start extra worker processes manually. The launcher already starts the API, research worker, and trading worker together.
-
-## Docker
-
-- Local stack:
-
-  ```powershell
-  docker compose up --build
-  ```
-
-- Oracle-style production stack:
-
-  ```powershell
-  docker compose -f docker-compose.prod.yml up --build -d
-  ```
-
-Production deployment guidance lives in [DEPLOY_ORACLE.md](DEPLOY_ORACLE.md).
-For a copy-paste VPS walkthrough tailored to this repo, use [DEPLOY_VPS.md](DEPLOY_VPS.md).
-
-## Environment knobs
-
-- `PROJECT_INVEST_MARKET_DATA_PROVIDER`: `mock` or `yahoo`
-- `PROJECT_INVEST_EXECUTION_MODE`: `paper` or `live`
-- `PROJECT_INVEST_STORAGE_BACKEND`: `local` or `postgres`
-- `PROJECT_INVEST_STORAGE_CACHE_ENABLED`: `true` or `false`
-- `PROJECT_INVEST_POSTGRES_DSN`: Postgres connection string when using the Postgres backend
-- `PROJECT_INVEST_POSTGRES_SCHEMA`: schema used for repository tables
-- `PROJECT_INVEST_REDIS_URL`: Redis URL for the optional cache layer
-- `PROJECT_INVEST_RESEARCH_SYMBOLS`: comma-separated symbols
-- `PROJECT_INVEST_RESEARCH_INTERVAL`: `1d`, `1h`, `1m`, etc.
-- `PROJECT_INVEST_RESEARCH_LOOP_ENABLED`: run the research loop inside the API process
-- `PROJECT_INVEST_RESEARCH_LOOP_SECONDS`: interval between research cycles
-- `PROJECT_INVEST_TRADING_LOOP_ENABLED`: run the trading loop inside the API process
-- `PROJECT_INVEST_TRADING_LOOP_SECONDS`: interval between trading cycles
-- `PROJECT_INVEST_LIVE_LOOP_ENABLED`: legacy combined loop flag
-- `PROJECT_INVEST_LIVE_LOOP_SECONDS`: legacy combined loop interval
-- `PROJECT_INVEST_STARTING_CAPITAL`: paper portfolio capital
-- `PROJECT_INVEST_MAX_RISK_PER_TRADE`: risk budget per position
-- `PROJECT_INVEST_LIVE_MAX_RISK_PER_TRADE`: tighter live risk cap
-- `PROJECT_INVEST_MAX_DAILY_LOSS`: blocks new buys once breached
-
-## Storage modes
-
-- Default mode: `local`
-  - stores everything in `runtime/data_lake`
-- Durable mode: `postgres`
-  - stores candles, features, portfolio state, trades, and reports in Postgres
-- Optional cache: enable Redis on top of either backend with `PROJECT_INVEST_STORAGE_CACHE_ENABLED=true`
-
-## Production recommendation
-
-- API, research worker, and trading worker should run as separate processes
-- use `PROJECT_INVEST_STORAGE_BACKEND=postgres`
-- use Redis as an optional cache layer
-- keep all `PROJECT_INVEST_*_LOOP_ENABLED=false` when dedicated worker containers are running
-
-## Roadmap
-
-- add migration/versioning support for storage schemas
-- add options chains, earnings, macro factors, and sentiment ingestion
-- add portfolio allocation across multiple evolved strategies
-- add broker adapters for Zerodha and Angel One
-- split the dashboard into a dedicated frontend when the API surface stabilizes
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before opening an external contribution. Project Invest is licensed under the [MIT License](LICENSE).

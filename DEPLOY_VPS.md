@@ -5,7 +5,7 @@ This is the fastest clean path to run Project Invest 24/7 on a Linux VPS.
 It is written for:
 
 - Ubuntu 24.04 or 22.04
-- your GitHub repo at `https://github.com/jamesChlorosis/project-invest.git`
+- your GitHub repo at `https://github.com/expediential/project-invest.git`
 - a domain you will point later, such as `invest.yourdomain.com`
 
 This guide uses the production stack already in this repo:
@@ -69,7 +69,7 @@ docker compose version
 ## 4. Clone your repo
 
 ```bash
-git clone https://github.com/jamesChlorosis/project-invest.git
+git clone https://github.com/expediential/project-invest.git
 cd project-invest
 ```
 
@@ -90,7 +90,8 @@ Use these values as your baseline production config:
 ```env
 PROJECT_INVEST_EXECUTION_MODE=paper
 PROJECT_INVEST_MARKET_DATA_PROVIDER=yahoo
-PROJECT_INVEST_ALLOW_MOCK_FALLBACK=true
+PROJECT_INVEST_ALLOW_MOCK_DATA=false
+PROJECT_INVEST_ALLOW_MOCK_FALLBACK=false
 PROJECT_INVEST_STORAGE_BACKEND=postgres
 PROJECT_INVEST_STORAGE_CACHE_ENABLED=true
 PROJECT_INVEST_POSTGRES_DSN=postgresql://project_invest:project_invest@postgres:5432/project_invest
@@ -277,7 +278,7 @@ PROJECT_INVEST_REDIS_URL=redis://redis:6379/0
 
 If Yahoo rate limits you:
 
-- keep `PROJECT_INVEST_ALLOW_MOCK_FALLBACK=true`
+- keep `PROJECT_INVEST_ALLOW_MOCK_FALLBACK=false`; provider failures must block new entries
 - start with `NSE` only
 - expand universes after the server is stable
 

@@ -166,6 +166,12 @@ Each finding includes observed evidence, the smallest safe remedy, and the regre
 
 ## Recommended Phase One implementation plan
 
+### Phase One status update — 2026-10-21
+
+Resolved in commits `2cf19fc` and `cb7c8ff`: live mode is rejected by configuration; embedded loops are rejected; operational cycle routes fail closed without a configured bearer token; mock fallback was removed and mock/unknown candles are blocked at the paper boundary; local historical sentiment now requires publication and observation timestamps; candidate validation excludes a final holdout; and promotion failures block BUY signals.
+
+Still unresolved: cross-process durable worker leases, transactional portfolio/order/event reconciliation, storage migrations, calendar/corporate-action policy, authenticated read access, and full final-holdout reporting remain future work. The existing API health check is still not a complete storage/provider readiness check.
+
 Do not begin experiment, ranking, allocator, ML, or Cosmos work until the following acceptance gates pass:
 
 1. **Fail closed:** paper-only configuration, strict startup validation, provider/staleness gates, and no synthetic fallback in paper/production.

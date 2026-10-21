@@ -8,6 +8,8 @@ Acceptance criteria: observed architecture and gaps are documented without claim
 
 ## Phase One — Stabilize paper-only operation
 
+**In progress (2026-10-21):** paper-only startup validation, separate worker roles, protected cycle-triggering API routes, no mock fallback, point-in-time local sentiment, a candidate-validation holdout, and strict paper-promotion blocking are implemented. Durable leases, atomic recovery, migrations, and full readiness checks remain acceptance blockers.
+
 1. Enforce strict paper-only startup validation and remove production mock fallback.
 2. Choose one worker topology; add durable cycle ownership and idempotency.
 3. Add durable event/command transitions, reconciliation, and restart recovery.
