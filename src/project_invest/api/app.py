@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import secrets
 from contextlib import asynccontextmanager
 from contextlib import suppress
@@ -141,9 +142,23 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
+_LOCAL_AUTH_COOKIE = "project_invest_local_auth"
+
 
 def get_container(request: Request) -> ServiceContainer:
     return request.app.state.container
+
+
+def _is_loopback_request(request: Request) -> bool:
+    client_host = request.client.host if request.client is not None else ""
+    return client_host.lower() in {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+def _auto_local_dashboard_auth_enabled(request: Request) -> bool:
+    return (
+        os.getenv("PROJECT_INVEST_AUTO_LOCAL_DASHBOARD_AUTH", "").strip().lower() == "true"
+        and _is_loopback_request(request)
+    )
 
 
 def require_operational_access(request: Request) -> None:
@@ -154,7 +169,11 @@ def require_operational_access(request: Request) -> None:
 
     authorization = request.headers.get("Authorization", "")
     scheme, _, supplied_token = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not supplied_token:
+    if scheme.lower() != "bearer":
+        supplied_token = ""
+    if not supplied_token and _auto_local_dashboard_auth_enabled(request):
+        supplied_token = request.cookies.get(_LOCAL_AUTH_COOKIE, "")
+    if not supplied_token:
         raise HTTPException(status_code=401, detail="Bearer authentication is required.")
     if not secrets.compare_digest(configured_token.get_secret_value(), supplied_token):
         raise HTTPException(status_code=403, detail="Invalid operational credentials.")
@@ -188,8 +207,19 @@ def resolve_interval(request: Request, requested_interval: str | None) -> str:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard() -> str:
-    return render_dashboard(settings.app_name)
+async def dashboard(request: Request) -> HTMLResponse:
+    container = get_container(request)
+    auto_local_auth = _auto_local_dashboard_auth_enabled(request) and container.settings.api_auth_token is not None
+    response = HTMLResponse(render_dashboard(settings.app_name, auto_local_auth=auto_local_auth))
+    if auto_local_auth:
+        response.set_cookie(
+            key=_LOCAL_AUTH_COOKIE,
+            value=container.settings.api_auth_token.get_secret_value(),
+            httponly=True,
+            samesite="strict",
+            path="/api",
+        )
+    return response
 
 
 @app.get("/health")

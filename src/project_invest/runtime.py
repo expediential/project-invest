@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import secrets
 import signal
 import socket
 import subprocess
@@ -28,7 +29,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     api_parser = subparsers.add_parser("api", help="Run the FastAPI control center.")
-    api_parser.add_argument("--host", default=os.getenv("HOST", "0.0.0.0"))
+    api_parser.add_argument("--host", default=os.getenv("HOST", "127.0.0.1"))
     api_parser.add_argument("--port", default=int(os.getenv("PORT", "8000")), type=int)
     api_parser.add_argument("--reload", action="store_true")
     api_parser.add_argument(
@@ -47,7 +48,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         "launch",
         help="Start the API, research worker, and trading worker together from one command.",
     )
-    launch_parser.add_argument("--host", default=os.getenv("HOST", "0.0.0.0"))
+    launch_parser.add_argument("--host", default=os.getenv("HOST", "127.0.0.1"))
     launch_parser.add_argument("--port", default=int(os.getenv("PORT", "8000")), type=int)
     launch_parser.add_argument(
         "--public",
@@ -105,6 +106,9 @@ def launch_stack(host: str, port: int, public: bool = False) -> None:
         "PROJECT_INVEST_TRADING_LOOP_ENABLED": "false",
         "PROJECT_INVEST_LIVE_LOOP_ENABLED": "false",
     }
+    if _is_loopback_host(host) and not public:
+        runtime_env.setdefault("PROJECT_INVEST_API_AUTH_TOKEN", secrets.token_urlsafe(32))
+        runtime_env["PROJECT_INVEST_AUTO_LOCAL_DASHBOARD_AUTH"] = "true"
 
     processes: list[subprocess.Popen[str]] = []
     try:
@@ -217,6 +221,10 @@ def _build_launch_env(project_root: Path) -> dict[str, str]:
     existing = env.get("PYTHONPATH", "").strip()
     env["PYTHONPATH"] = src_path if not existing else f"{src_path}{os.pathsep}{existing}"
     return env
+
+
+def _is_loopback_host(host: str) -> bool:
+    return host.strip().lower() in {"127.0.0.1", "::1", "localhost"}
 
 
 def _spawn_cloudflared_tunnel(port: int) -> subprocess.Popen[str]:

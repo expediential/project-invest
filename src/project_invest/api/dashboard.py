@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 
-def render_dashboard(app_name: str) -> str:
+def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
+    auth_control = (
+        '<span class="local-auth">Local controls enabled</span>'
+        if auto_local_auth
+        else '<label>Operational token <input id="operational-token" type="password" autocomplete="off"></label>'
+    )
     return f"""<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -723,7 +728,7 @@ def render_dashboard(app_name: str) -> str:
         <div class="topbar-header">
           <div class="brand">{app_name} Terminal</div>
           <div class="controls">
-            <label>Operational token <input id="operational-token" type="password" autocomplete="off"></label>
+            {auth_control}
             <button class="primary" id="run-cycle">Run Research Cycle</button>
             <button class="secondary" id="run-trade">Run Trading Cycle</button>
             <button id="refresh">Refresh</button>

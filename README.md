@@ -51,7 +51,7 @@ cp .env.example .env
 .venv/bin/python -m project_invest api --host 127.0.0.1 --port 8000
 ```
 
-Open `http://127.0.0.1:8000`. Read-only routes are available without a token. Operational routes require `Authorization: Bearer <PROJECT_INVEST_API_AUTH_TOKEN>`; if the token is not configured, they return a safe `503` response.
+Open `http://127.0.0.1:8000`. Read-only routes are available without a token. The normal local `launch` command creates a temporary token and signs the localhost dashboard in automatically for that run. Direct API calls require `Authorization: Bearer <PROJECT_INVEST_API_AUTH_TOKEN>`; API-only and non-local runs without a token return a safe `503` response.
 
 ## Running the system
 
