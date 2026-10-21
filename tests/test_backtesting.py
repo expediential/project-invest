@@ -76,3 +76,29 @@ def test_walk_forward_validation_preserves_positive_trend_edge() -> None:
     assert metrics.trades >= 1
     assert metrics.final_equity >= 100000.0
     assert metrics.total_return >= 0
+
+
+def test_walk_forward_excludes_the_final_holdout_from_candidate_validation() -> None:
+    signal_engine = StrategySignalEngine()
+    backtester = BacktestingEngine(
+        signal_engine=signal_engine,
+        slippage_bps=0,
+        fee_bps=0,
+        max_risk_per_trade=0.05,
+    )
+    genome = StrategyGenome(
+        family=StrategyFamily.TREND_FOLLOWING,
+        short_window=5,
+        long_window=18,
+        momentum_threshold=0.0,
+    )
+    candles = make_trending_candles(180)
+    altered_holdout = [candle.model_copy() for candle in candles]
+    for index in range(144, len(altered_holdout)):
+        candle = altered_holdout[index]
+        altered_holdout[index] = candle.model_copy(update={"close": candle.close * 0.1, "low": candle.low * 0.1})
+
+    original = backtester.run_walk_forward("TREND", candles, genome, initial_capital=100000.0)
+    perturbed = backtester.run_walk_forward("TREND", altered_holdout, genome, initial_capital=100000.0)
+
+    assert original == perturbed

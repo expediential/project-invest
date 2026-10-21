@@ -104,14 +104,6 @@ class StrategyPromotionGate:
         if assessment.approved:
             return signal
 
-        if not assessment.hard_failure:
-            return signal.model_copy(
-                update={
-                    "confidence": round(max(0.12, signal.confidence * 0.6), 4),
-                    "reason": f"Soft-promoted for paper trading: {assessment.reason}",
-                }
-            )
-
         return signal.model_copy(
             update={
                 "action": SignalAction.HOLD,

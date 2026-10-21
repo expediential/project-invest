@@ -138,38 +138,52 @@ class BacktestingEngine:
         required_bars = self.signal_engine.required_bars(genome)
         minimum_total_bars = max((required_bars * 2) + 20, 80)
         if len(candles) < minimum_total_bars:
-            return self.run(symbol, candles, genome, initial_capital).metrics
+            return self._empty_metrics(initial_capital)
 
         test_size = max(required_bars, len(candles) // 6, 30)
         initial_train_size = max(required_bars * 3, len(candles) // 2, 90)
-        initial_train_size = min(initial_train_size, len(candles) - max(test_size, 15))
+        holdout_size = max(test_size, len(candles) // 5, 20)
+        validation_end = len(candles) - holdout_size
+        initial_train_size = min(initial_train_size, validation_end - max(test_size, 15))
         if initial_train_size <= required_bars:
             return self.run(symbol, candles, genome, initial_capital).metrics
 
         fold_metrics: list[BacktestMetrics] = []
         train_end = initial_train_size
 
-        while train_end < len(candles):
-            test_end = min(len(candles), train_end + test_size)
+        while train_end < validation_end:
+            test_end = min(validation_end, train_end + test_size)
             out_of_sample_bars = test_end - train_end
             if out_of_sample_bars < max(10, min(required_bars, 20)):
                 break
 
-            segment = candles[:test_end]
+            # The execution simulation receives only its allowed warm-up and
+            # out-of-sample validation bars. The untouched final holdout is
+            # deliberately excluded from candidate validation.
+            warmup_start = max(0, train_end - required_bars)
+            segment = candles[warmup_start:test_end]
             result = self.run(
                 symbol,
                 segment,
                 genome,
                 initial_capital,
-                trade_start_index=train_end,
+                trade_start_index=train_end - warmup_start,
             )
             fold_metrics.append(result.metrics)
             train_end = test_end
 
         if not fold_metrics:
-            return self.run(symbol, candles, genome, initial_capital).metrics
+            return self._empty_metrics(initial_capital)
 
         return self._aggregate_metrics(initial_capital, fold_metrics)
+
+    def development_slice(self, candles: list[Candle], genome: StrategyGenome) -> list[Candle]:
+        """Return data eligible for fitting/candidate comparison, excluding final holdout."""
+        required_bars = self.signal_engine.required_bars(self.signal_engine.normalize_genome(genome))
+        holdout_size = max(required_bars, len(candles) // 5, 20)
+        if len(candles) <= holdout_size:
+            return []
+        return candles[:-holdout_size]
 
     def _position_size(
         self,

@@ -19,10 +19,9 @@ class FeatureEngineeringEngine:
         ema_12 = self._ema_series(closes, 12)
         ema_26 = self._ema_series(closes, 26)
         rsi_14 = self._rsi_series(closes, 14)
-        sentiment_snapshot = self._sentiment_snapshot(candles[-1].symbol)
-
         rows: list[FeatureRow] = []
         for index, candle in enumerate(candles):
+            sentiment_snapshot = self._sentiment_snapshot(candle.symbol, candle.timestamp)
             rows.append(
                 FeatureRow(
                     symbol=candle.symbol,
@@ -116,7 +115,7 @@ class FeatureEngineeringEngine:
         mean_value = fmean(sample)
         return round((values[index] - mean_value) / std_dev, 6)
 
-    def _sentiment_snapshot(self, symbol: str) -> SentimentSnapshot:
+    def _sentiment_snapshot(self, symbol: str, as_of) -> SentimentSnapshot:
         if self.sentiment_provider is None:
             return SentimentSnapshot(score=0.0, intensity=0.0)
-        return self.sentiment_provider.get_snapshot(symbol)
+        return self.sentiment_provider.get_snapshot(symbol, as_of=as_of)

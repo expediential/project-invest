@@ -55,12 +55,12 @@ class Settings(BaseSettings):
     population_size: int = 40
     generations: int = 12
     evolution_seed: int = 42
-    min_validation_sharpe: float = -0.15
-    min_validation_return: float = -0.01
+    min_validation_sharpe: float = 0.0
+    min_validation_return: float = 0.0
     max_validation_drawdown: float = 0.2
-    min_validation_trades: int = 1
-    min_validation_profit_factor: float = 0.9
-    min_validation_win_rate: float = 0.3
+    min_validation_trades: int = 20
+    min_validation_profit_factor: float = 1.0
+    min_validation_win_rate: float = 0.5
     min_validation_trade_coverage: float = 0.05
     max_validation_return_gap: float = 0.15
     max_validation_sharpe_gap: float = 3.0

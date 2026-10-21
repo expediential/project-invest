@@ -109,10 +109,11 @@ class StrategyEvolutionEngine:
         return population
 
     def _evaluate(self, symbol: str, candles: list[Candle], genome: StrategyGenome) -> StrategyEvaluation:
-        full_backtest = self.backtester.run(symbol, candles, genome, self.initial_capital)
+        development_candles = self.backtester.development_slice(candles, genome)
+        full_backtest = self.backtester.run(symbol, development_candles, genome, self.initial_capital)
         validation_metrics = self.backtester.run_walk_forward(
             symbol,
-            candles,
+            development_candles,
             full_backtest.genome,
             self.initial_capital,
         )

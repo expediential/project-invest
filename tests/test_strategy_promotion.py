@@ -118,7 +118,7 @@ def test_promotion_gate_leaves_sell_signals_untouched() -> None:
     assert gated_signal.reason == "Exit candidate"
 
 
-def test_promotion_gate_soft_promotes_borderline_buy_candidates() -> None:
+def test_promotion_gate_blocks_borderline_buy_candidates() -> None:
     gate = StrategyPromotionGate(
         PromotionThresholds(
             min_validation_sharpe=0.25,
@@ -142,6 +142,6 @@ def test_promotion_gate_soft_promotes_borderline_buy_candidates() -> None:
 
     gated_signal = gate.apply(evaluation, make_buy_signal())
 
-    assert gated_signal.action == SignalAction.BUY
-    assert gated_signal.confidence < 0.65
-    assert "Soft-promoted" in gated_signal.reason
+    assert gated_signal.action == SignalAction.HOLD
+    assert gated_signal.confidence == 0.0
+    assert "Paper-trading gate blocked entry" in gated_signal.reason
