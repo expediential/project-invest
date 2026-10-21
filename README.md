@@ -8,7 +8,7 @@ Project Invest is an experimental, paper-only quantitative research workspace. I
 
 ## What works today
 
-- A responsive, paper-only quant terminal with portfolio, positions, orders/events, opportunities, strategies, risk, data-quality, health, and configuration views.
+- FastAPI dashboard and read-only health, market, portfolio, trade, event, analytics, portfolio-summary/history, data-quality, and compute-status endpoints.
 - Read-only portfolio-summary/history/position APIs with fee-aware accounting, stored-snapshot performance history, data-quality status, and an honest local/Cosmos compute-status view.
 - Explicit research-only and paper-trading worker modes, local JSON storage, optional Postgres/Redis storage paths, and Yahoo or explicitly opted-in mock data.
 - Basic technical features, three bounded rule-based strategy families, cost-aware backtests, promotion gates, risk limits, and paper portfolio accounting.

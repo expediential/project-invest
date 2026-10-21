@@ -212,8 +212,8 @@ def test_monitoring_routes_report_stored_state_without_ingestion(monkeypatch) ->
         config = client.get("/api/config")
 
     assert dashboard.status_code == 200
-    assert "Quant Research Terminal" in dashboard.text
     assert "Terminal Test" in dashboard.text
+    assert "Run Research Cycle" in dashboard.text
     assert summary.json()["state"] == "empty"
     assert summary.json()["base_currency"] == "USD"
     assert quality.json()["status"] == "partial"

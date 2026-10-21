@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from html import escape
+
 
 def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
+    safe_app_name = escape(app_name)
     auth_control = (
         '<span class="local-auth">Local controls enabled</span>'
         if auto_local_auth
@@ -12,7 +15,7 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{app_name} Terminal</title>
+    <title>{safe_app_name} Terminal</title>
     <style>
       :root {{
         color-scheme: dark;
@@ -726,7 +729,7 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
     <main class="terminal">
       <header class="topbar">
         <div class="topbar-header">
-          <div class="brand">{app_name} Terminal</div>
+          <div class="brand">{safe_app_name} Terminal</div>
           <div class="controls">
             {auth_control}
             <button class="primary" id="run-cycle">Run Research Cycle</button>

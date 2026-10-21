@@ -69,7 +69,7 @@ Acceptance criteria: local backend remains functional when Cosmos is unavailable
 
 ## Phase Ten — Dashboard and observability
 
-**In progress (2026-10-21):** the paper terminal now exposes persisted portfolio accounting, performance history, positions, fills versus decision events, stored-data quality, liveness, safe settings, and honest `not_configured` Cosmos status. Experiments, rankings, allocation, model/version metadata, readiness, replay, and remote-job telemetry remain unimplemented.
+**In progress (2026-10-21):** the active dashboard preserves its established controls while the API exposes persisted portfolio accounting, performance history, positions, fills versus decision events, stored-data quality, liveness, safe settings, and honest `not_configured` Cosmos status. Experiments, rankings, allocation, model/version metadata, readiness, replay, and remote-job telemetry remain unimplemented.
 
 Incrementally expose experiments, rankings, allocation, health, memory, replay, and data quality with safe empty/error/stale states. Preserve API compatibility or version changes.
 

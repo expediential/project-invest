@@ -16,4 +16,4 @@ All notable changes are documented here. This project follows a Keep a Changelog
 
 - Fee-aware paper-accounting reconciliation, duplicate trade-id protection, and append-only portfolio-history snapshots.
 - Portfolio summary/history/positions, stored-data quality, and explicit compute-status APIs.
-- Responsive paper-only terminal dashboard; Cosmos is shown as not configured until a verified remote integration exists.
+- Portfolio-monitoring data is available through the established dashboard and API; Cosmos is shown as not configured until a verified remote integration exists.

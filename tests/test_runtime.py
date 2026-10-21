@@ -6,6 +6,15 @@ from pathlib import Path
 from project_invest import runtime
 
 
+def test_windows_launcher_uses_project_virtual_environment() -> None:
+    launcher = Path(__file__).parents[1] / "run-project-invest.cmd"
+    content = launcher.read_text(encoding="utf-8")
+
+    assert ".venv\\Scripts\\python.exe" in content
+    assert '"%PROJECT_INVEST_PYTHON%" -m project_invest launch' in content
+    assert "PROJECT_INVEST_AUTO_LOCAL_DASHBOARD_AUTH" not in content
+
+
 def test_build_launch_env_prepends_src(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("PYTHONPATH", "existing_path")
 
