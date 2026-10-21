@@ -9,7 +9,7 @@ from contextlib import suppress
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
-from project_invest.api.dashboard import render_dashboard
+from project_invest.api.terminal_dashboard import render_dashboard
 from project_invest.api.schemas import ResearchRunRequest
 from project_invest.config import settings
 from project_invest.container import ServiceContainer, build_container

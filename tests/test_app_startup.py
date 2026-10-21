@@ -11,8 +11,22 @@ from project_invest.config import Settings
 class _DummyStorage:
     backend_name = "local"
 
+    def __init__(self) -> None:
+        self.candle_reads = 0
+
     def load_latest_report(self, stream: str = "research"):
         return None
+
+    def load_portfolio(self):
+        return None
+
+    def load_portfolio_history(self, limit: int = 2_000):
+        return []
+
+    def load_candles(self, symbol: str, interval: str, stage: str = "processed"):
+        self.candle_reads += 1
+        assert stage == "processed"
+        return []
 
     def close(self) -> None:
         return None
@@ -170,3 +184,40 @@ def test_operational_routes_fail_closed_without_valid_credentials(monkeypatch) -
 
     assert response.status_code == 503
     assert called is False
+
+
+def test_monitoring_routes_report_stored_state_without_ingestion(monkeypatch) -> None:
+    dummy_settings = Settings(
+        app_name="Terminal Test",
+        base_currency="usd",
+        research_symbols="RELIANCE.NS",
+        use_market_universes=False,
+        api_auth_token="test-token",
+    )
+    dummy_storage = _DummyStorage()
+    dummy_container = SimpleNamespace(
+        settings=dummy_settings,
+        storage=dummy_storage,
+        research_lab=object(),
+        trading_lab=object(),
+        close=lambda: None,
+    )
+    monkeypatch.setattr(app_module, "build_container", lambda _: dummy_container)
+
+    with TestClient(app_module.app) as client:
+        dashboard = client.get("/")
+        summary = client.get("/api/portfolio/summary")
+        quality = client.get("/api/data-quality")
+        compute = client.get("/api/research/compute-status")
+        config = client.get("/api/config")
+
+    assert dashboard.status_code == 200
+    assert "Quant Research Terminal" in dashboard.text
+    assert "Terminal Test" in dashboard.text
+    assert summary.json()["state"] == "empty"
+    assert summary.json()["base_currency"] == "USD"
+    assert quality.json()["status"] == "partial"
+    assert "does not fetch" in quality.json()["note"]
+    assert dummy_storage.candle_reads == 1
+    assert compute.json()["remote_backend"]["status"] == "not_configured"
+    assert config.json()["base_currency"] == "USD"
