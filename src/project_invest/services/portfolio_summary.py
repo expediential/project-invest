@@ -11,6 +11,7 @@ class PortfolioSummaryService:
         portfolio: PortfolioSnapshot | None,
         history: list[PortfolioHistorySnapshot],
         starting_capital: float,
+        base_currency: str = "INR",
     ) -> dict[str, object]:
         if portfolio is None:
             return {
@@ -18,6 +19,7 @@ class PortfolioSummaryService:
                 "paper_trading": True,
                 "message": "No persisted paper portfolio exists yet. A portfolio baseline is created on the first paper execution.",
                 "starting_capital": starting_capital,
+                "base_currency": base_currency,
                 "history_available": False,
                 "history_points": 0,
                 "positions": [],
@@ -47,6 +49,7 @@ class PortfolioSummaryService:
             "paper_trading": True,
             "as_of": portfolio.as_of,
             "starting_capital": portfolio.starting_capital,
+            "base_currency": base_currency,
             "equity": portfolio.total_equity,
             "cash": portfolio.cash,
             "invested_market_value": market_value,

@@ -20,6 +20,12 @@ def test_settings_parse_csv_symbols_and_storage_backend() -> None:
     assert configured.execution_mode == "paper"
 
 
+def test_settings_normalize_and_validate_base_currency() -> None:
+    assert Settings(base_currency=" usd ").base_currency == "USD"
+    with pytest.raises(ValidationError, match="base_currency"):
+        Settings(base_currency="rupees")
+
+
 @pytest.mark.parametrize("execution_mode", ["live", "LIVE", "unsupported"])
 def test_settings_reject_unsupported_execution_modes(execution_mode: str) -> None:
     with pytest.raises(ValidationError, match="execution_mode"):

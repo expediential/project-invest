@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "Project Invest"
+    base_currency: str = "INR"
     environment: Literal["development", "test", "production"] = "development"
     execution_mode: Literal["paper"] = "paper"
     market_data_provider: Literal["yahoo", "mock"] = "yahoo"
@@ -167,6 +168,16 @@ class Settings(BaseSettings):
             if normalized in {"local", "postgres"}:
                 return normalized
         return "local"
+
+    @field_validator("base_currency", mode="before")
+    @classmethod
+    def normalize_base_currency(cls, value: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError("base_currency must be a three-letter ISO currency code.")
+        normalized = value.strip().upper()
+        if len(normalized) != 3 or not normalized.isalpha():
+            raise ValueError("base_currency must be a three-letter ISO currency code.")
+        return normalized
 
     @field_validator("sentiment_provider", mode="before")
     @classmethod

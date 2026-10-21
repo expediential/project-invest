@@ -211,7 +211,7 @@ def resolve_interval(request: Request, requested_interval: str | None) -> str:
 async def dashboard(request: Request) -> HTMLResponse:
     container = get_container(request)
     auto_local_auth = _auto_local_dashboard_auth_enabled(request) and container.settings.api_auth_token is not None
-    response = HTMLResponse(render_dashboard(settings.app_name, auto_local_auth=auto_local_auth))
+    response = HTMLResponse(render_dashboard(container.settings.app_name, auto_local_auth=auto_local_auth))
     if auto_local_auth:
         response.set_cookie(
             key=_LOCAL_AUTH_COOKIE,
@@ -255,6 +255,7 @@ async def health(request: Request) -> dict[str, object]:
     return {
         "status": "ok",
         "execution_mode": container.settings.execution_mode,
+        "base_currency": container.settings.base_currency,
         "market_data_provider": container.settings.market_data_provider,
         "allow_mock_fallback": container.settings.allow_mock_fallback,
         "latest_report_provider": latest_research_report.provider if latest_research_report is not None else None,
@@ -306,6 +307,7 @@ async def config_snapshot(request: Request) -> dict[str, object]:
     )
     return {
         "execution_mode": container.settings.execution_mode,
+        "base_currency": container.settings.base_currency,
         "market_data_provider": container.settings.market_data_provider,
         "allow_mock_fallback": container.settings.allow_mock_fallback,
         "storage_backend": container.settings.storage_backend,
@@ -437,6 +439,7 @@ async def portfolio_summary(request: Request) -> dict[str, object]:
         portfolio=container.storage.load_portfolio(),
         history=container.storage.load_portfolio_history(),
         starting_capital=container.settings.starting_capital,
+        base_currency=container.settings.base_currency,
     )
 
 
@@ -452,8 +455,59 @@ async def positions(request: Request) -> list[dict[str, object]]:
         portfolio=container.storage.load_portfolio(),
         history=container.storage.load_portfolio_history(),
         starting_capital=container.settings.starting_capital,
+        base_currency=container.settings.base_currency,
     )
     return summary["positions"]
+
+
+@app.get("/api/data-quality")
+async def data_quality(request: Request) -> dict[str, object]:
+    container = get_container(request)
+    resolved_symbols = getattr(request.app.state, "resolved_symbols", None) or resolve_symbols(
+        container.settings.research_symbols,
+        container.settings.use_market_universes,
+        container.settings.market_universes,
+    )
+    interval = container.settings.trading_interval
+    records = []
+    for symbol in resolved_symbols:
+        candles = container.storage.load_candles(symbol, interval, stage="processed")
+        latest = candles[-1] if candles else None
+        records.append(
+            {
+                "symbol": symbol,
+                "interval": interval,
+                "status": "available" if latest is not None else "unavailable",
+                "latest_timestamp": latest.timestamp if latest is not None else None,
+                "data_source": latest.data_source if latest is not None else None,
+                "stored_bars": len(candles),
+            }
+        )
+    return {
+        "status": "available" if records and all(record["status"] == "available" for record in records) else "partial",
+        "records": records,
+        "note": "This endpoint reports stored data only. It does not fetch from a provider or claim real-time freshness.",
+    }
+
+
+@app.get("/api/research/compute-status")
+async def compute_status(request: Request) -> dict[str, object]:
+    container = get_container(request)
+    return {
+        "local_backend": {
+            "status": "available",
+            "purpose": "Local research and paper-trading workers",
+            "worker_topology": "standalone",
+        },
+        "remote_backend": {
+            "status": "not_configured",
+            "name": "Cosmos",
+            "message": "Remote compute is not configured. Scheduler, authentication, allocation, network, storage, and runtime details are required before integration.",
+        },
+        "jobs": [],
+        "note": "No remote job, GPU, scheduler, or utilization data is reported until a verified backend exists.",
+        "storage_backend": container.storage.backend_name,
+    }
 
 
 @app.get("/api/trades")
