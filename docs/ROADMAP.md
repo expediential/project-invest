@@ -8,7 +8,7 @@ Acceptance criteria: observed architecture and gaps are documented without claim
 
 ## Phase One — Stabilize paper-only operation
 
-**In progress (2026-10-21):** paper-only startup validation, separate worker roles, protected cycle-triggering API routes, no mock fallback, point-in-time local sentiment, a candidate-validation holdout, and strict paper-promotion blocking are implemented. Durable leases, atomic recovery, migrations, and full readiness checks remain acceptance blockers.
+**In progress (2026-10-21):** paper-only startup validation, separate worker roles, protected cycle-triggering API routes, no mock fallback, point-in-time local sentiment, a candidate-validation holdout, strict paper-promotion blocking, fee-aware portfolio snapshots, and duplicate trade-id protection are implemented. Durable leases, atomic recovery, migrations, and full readiness checks remain acceptance blockers.
 
 1. Enforce strict paper-only startup validation and remove production mock fallback.
 2. Choose one worker topology; add durable cycle ownership and idempotency.
@@ -68,6 +68,8 @@ Prerequisite: documented approved access, scheduler/runtime/storage/network/data
 Acceptance criteria: local backend remains functional when Cosmos is unavailable; jobs have bounded resources, cancellation, logs, checksum, seed, and status.
 
 ## Phase Ten — Dashboard and observability
+
+**In progress (2026-10-21):** the paper terminal now exposes persisted portfolio accounting, performance history, positions, fills versus decision events, stored-data quality, liveness, safe settings, and honest `not_configured` Cosmos status. Experiments, rankings, allocation, model/version metadata, readiness, replay, and remote-job telemetry remain unimplemented.
 
 Incrementally expose experiments, rankings, allocation, health, memory, replay, and data quality with safe empty/error/stale states. Preserve API compatibility or version changes.
 

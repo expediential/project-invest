@@ -8,7 +8,8 @@ Project Invest is an experimental, paper-only quantitative research workspace. I
 
 ## What works today
 
-- FastAPI dashboard and read-only health, market, portfolio, trade, event, and analytics endpoints.
+- A responsive, paper-only quant terminal with portfolio, positions, orders/events, opportunities, strategies, risk, data-quality, health, and configuration views.
+- Read-only portfolio-summary/history/position APIs with fee-aware accounting, stored-snapshot performance history, data-quality status, and an honest local/Cosmos compute-status view.
 - Explicit research-only and paper-trading worker modes, local JSON storage, optional Postgres/Redis storage paths, and Yahoo or explicitly opted-in mock data.
 - Basic technical features, three bounded rule-based strategy families, cost-aware backtests, promotion gates, risk limits, and paper portfolio accounting.
 - Point-in-time local sentiment observations and a walk-forward candidate validation path that excludes a final holdout.
@@ -73,6 +74,7 @@ Do not run more than one worker of a given role against the same storage until t
 | Variable | Safe default | Meaning |
 | --- | --- | --- |
 | `PROJECT_INVEST_EXECUTION_MODE` | `paper` | The only supported execution mode; `live` fails startup. |
+| `PROJECT_INVEST_BASE_CURRENCY` | `INR` | Three-letter display currency for paper-portfolio reporting. It does not convert market values. |
 | `PROJECT_INVEST_MARKET_DATA_PROVIDER` | `yahoo` | Market provider. |
 | `PROJECT_INVEST_ALLOW_MOCK_DATA` | `false` | Mock data requires this plus `development` or `test` environment. |
 | `PROJECT_INVEST_API_AUTH_TOKEN` | unset | Required for cycle-triggering API routes. Never commit it. |
@@ -106,6 +108,7 @@ Docker Compose files exist for local experimentation and a VM topology, but they
 - [Implementation audit](docs/IMPLEMENTATION_AUDIT.md)
 - [Research risk register](docs/RESEARCH_RISK_REGISTER.md)
 - [Roadmap](docs/ROADMAP.md)
+- [UI and reliability audit](docs/UI_AND_RELIABILITY_AUDIT.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
