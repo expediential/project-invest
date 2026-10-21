@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from project_invest import runtime
@@ -10,7 +11,7 @@ def test_build_launch_env_prepends_src(monkeypatch, tmp_path: Path) -> None:
 
     env = runtime._build_launch_env(tmp_path)
 
-    assert env["PYTHONPATH"].split(";")[0].endswith("src")
+    assert env["PYTHONPATH"].split(os.pathsep)[0].endswith("src")
     assert "existing_path" in env["PYTHONPATH"]
 
 
