@@ -38,7 +38,7 @@ def test_run_api_with_public_tunnel_starts_and_stops_tunnel(monkeypatch) -> None
     assert calls == ["spawn:8000", "uvicorn", "stop"]
 
 
-def test_launch_stack_starts_api_with_embedded_loops(monkeypatch, tmp_path: Path) -> None:
+def test_launch_stack_starts_separate_api_and_worker_processes(monkeypatch, tmp_path: Path) -> None:
     spawned: list[list[str]] = []
     spawned_envs: list[dict[str, str] | None] = []
 
@@ -72,8 +72,10 @@ def test_launch_stack_starts_api_with_embedded_loops(monkeypatch, tmp_path: Path
 
     runtime.launch_stack(host="0.0.0.0", port=8000, public=False)
 
-    assert len(spawned) == 1
+    assert len(spawned) == 3
     assert spawned[0][2] == "project_invest"
     assert spawned[0][3] == "api"
-    assert spawned_envs[0]["PROJECT_INVEST_RESEARCH_LOOP_ENABLED"] == "true"
-    assert spawned_envs[0]["PROJECT_INVEST_TRADING_LOOP_ENABLED"] == "true"
+    assert spawned[1][-2:] == ["--mode", "research"]
+    assert spawned[2][-2:] == ["--mode", "trading"]
+    assert spawned_envs[0]["PROJECT_INVEST_RESEARCH_LOOP_ENABLED"] == "false"
+    assert spawned_envs[0]["PROJECT_INVEST_TRADING_LOOP_ENABLED"] == "false"

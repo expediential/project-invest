@@ -55,11 +55,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         help="Also expose the local dashboard through cloudflared.",
     )
 
-    worker_parser = subparsers.add_parser("worker", help="Run continuous loops (combined, research-only, or trading).")
+    worker_parser = subparsers.add_parser("worker", help="Run one continuous research-only or paper-trading loop.")
     worker_parser.add_argument("--symbols", nargs="*", default=None)
     worker_parser.add_argument("--interval-seconds", type=int, default=None)
-    worker_parser.add_argument("--mode", choices=["combined", "research", "trading"], default="combined")
-    worker_parser.add_argument("--force", action="store_true")
+    worker_parser.add_argument("--mode", choices=["research", "trading"], default="research")
 
     args = parser.parse_args(list(argv) if argv is not None else None)
 
@@ -80,7 +79,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         return
 
     if args.command == "worker":
-        asyncio.run(run_worker(args.symbols, args.interval_seconds, args.mode, args.force))
+        asyncio.run(run_worker(args.symbols, args.interval_seconds, args.mode))
 
 
 def run_api(host: str, port: int, reload: bool = False, public: bool = False) -> None:
@@ -100,10 +99,10 @@ def launch_stack(host: str, port: int, public: bool = False) -> None:
     python_executable = sys.executable
     project_root = Path.cwd()
     launch_env = _build_launch_env(project_root)
-    api_env = {
+    runtime_env = {
         **launch_env,
-        "PROJECT_INVEST_RESEARCH_LOOP_ENABLED": "true",
-        "PROJECT_INVEST_TRADING_LOOP_ENABLED": "true",
+        "PROJECT_INVEST_RESEARCH_LOOP_ENABLED": "false",
+        "PROJECT_INVEST_TRADING_LOOP_ENABLED": "false",
         "PROJECT_INVEST_LIVE_LOOP_ENABLED": "false",
     }
 
@@ -111,10 +110,25 @@ def launch_stack(host: str, port: int, public: bool = False) -> None:
     try:
         api_process = subprocess.Popen(
             [python_executable, "-m", "project_invest", "api", "--host", host, "--port", str(port)],
-            env=api_env,
+            env=runtime_env,
             cwd=str(project_root),
         )
         processes.append(api_process)
+
+        processes.append(
+            subprocess.Popen(
+                [python_executable, "-m", "project_invest", "worker", "--mode", "research"],
+                env=runtime_env,
+                cwd=str(project_root),
+            )
+        )
+        processes.append(
+            subprocess.Popen(
+                [python_executable, "-m", "project_invest", "worker", "--mode", "trading"],
+                env=runtime_env,
+                cwd=str(project_root),
+            )
+        )
 
         _wait_for_port("127.0.0.1", port, timeout_seconds=25.0)
 
@@ -122,12 +136,12 @@ def launch_stack(host: str, port: int, public: bool = False) -> None:
             processes.append(_spawn_cloudflared_tunnel(port))
 
         print(f"Project Invest stack is live at http://127.0.0.1:{port}/")
-        print("API-owned research and trading loops are enabled in this launch mode.")
+        print("Standalone research and paper-trading workers are enabled in this launch mode.")
         if public:
             print("Cloudflared quick tunnel is starting in this same console output.")
 
         while True:
-            for process in processes[:1]:
+            for process in processes:
                 if process.poll() is not None:
                     raise RuntimeError(f"One of the stack processes exited early with code {process.returncode}.")
             time.sleep(1.0)
@@ -157,15 +171,8 @@ async def run_trade_once(symbols: list[str] | None = None) -> None:
 async def run_worker(
     symbols: list[str] | None = None,
     interval_seconds: int | None = None,
-    mode: str = "combined",
-    force: bool = False,
+    mode: str = "research",
 ) -> None:
-    if not force and (settings.research_loop_enabled or settings.trading_loop_enabled or settings.live_loop_enabled):
-        raise RuntimeError(
-            "Standalone worker launch blocked because embedded API loops are enabled in .env. "
-            "Run only the API process, disable PROJECT_INVEST_*_LOOP_ENABLED, or use --force."
-        )
-
     container = build_container(settings)
     resolved_symbols = symbols or resolve_symbols(
         settings.research_symbols,
@@ -180,15 +187,12 @@ async def run_worker(
             symbols=resolved_symbols,
         )
     else:
-        execute_trades = mode == "combined"
-        effective_interval = interval_seconds or (
-            settings.live_loop_seconds if execute_trades else settings.research_loop_seconds
-        )
+        effective_interval = interval_seconds or settings.research_loop_seconds
         worker = BackgroundResearchWorker(
             research_lab=container.research_lab,
             interval_seconds=effective_interval,
             symbols=resolved_symbols,
-            execute_trades=execute_trades,
+            execute_trades=False,
         )
     stop_event = asyncio.Event()
 
