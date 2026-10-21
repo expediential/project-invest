@@ -4,6 +4,7 @@ from project_invest.domain.models import (
     Candle,
     ExecutionOrder,
     FeatureRow,
+    PortfolioHistorySnapshot,
     PortfolioSnapshot,
     ResearchCycleReport,
     ResearchEvent,
@@ -69,12 +70,23 @@ class CachedResearchStorage:
             self.cache.set("portfolio:latest", portfolio.model_dump(mode="json"))
         return portfolio
 
+    def load_portfolio_history(self, limit: int | None = None) -> list[PortfolioHistorySnapshot]:
+        return self.durable_storage.load_portfolio_history(limit=limit)
+
     def append_trade(self, trade: ExecutionOrder) -> None:
         self.durable_storage.append_trade(trade)
         history = self.cache.get("trades:history")
         if history is None:
             return
-        history.append(trade.model_dump(mode="json"))
+        payload = trade.model_dump(mode="json")
+        existing_index = next(
+            (index for index, item in enumerate(history) if item.get("trade_id") == trade.trade_id),
+            None,
+        )
+        if existing_index is None:
+            history.append(payload)
+        elif history[existing_index] != payload:
+            history[existing_index] = payload
         self.cache.set("trades:history", history)
 
     def load_trades(self, limit: int | None = None) -> list[ExecutionOrder]:

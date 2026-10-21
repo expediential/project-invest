@@ -6,6 +6,7 @@ from project_invest.domain.models import (
     Candle,
     ExecutionOrder,
     FeatureRow,
+    PortfolioHistorySnapshot,
     PortfolioSnapshot,
     ResearchCycleReport,
     ResearchEvent,
@@ -37,6 +38,11 @@ class PortfolioRepository(Protocol):
 
     def load_portfolio(self) -> PortfolioSnapshot | None:
         """Load the latest portfolio state."""
+
+
+class PortfolioHistoryRepository(Protocol):
+    def load_portfolio_history(self, limit: int | None = None) -> list[PortfolioHistorySnapshot]:
+        """Load immutable portfolio accounting points in chronological order."""
 
 
 class TradeRepository(Protocol):
@@ -97,6 +103,7 @@ class ResearchStorage(
     CandleRepository,
     FeatureRepository,
     PortfolioRepository,
+    PortfolioHistoryRepository,
     TradeRepository,
     ReportRepository,
     EventLogRepository,

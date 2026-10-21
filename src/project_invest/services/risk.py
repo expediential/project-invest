@@ -25,7 +25,7 @@ class RiskManager:
             return RiskDecision(approved=False, allowed_quantity=0, reason="Max positions limit reached.")
 
         max_loss_allowed = portfolio.starting_capital * self.limits.max_daily_loss
-        if portfolio.daily_pnl <= -max_loss_allowed:
+        if portfolio.daily_pnl is not None and portfolio.daily_pnl <= -max_loss_allowed:
             return RiskDecision(approved=False, allowed_quantity=0, reason="Daily loss limit breached.")
 
         drawdown_limit = portfolio.starting_capital * (1 - self.limits.max_drawdown)

@@ -34,36 +34,63 @@ class PaperBroker:
 
     def get_portfolio(self, market_prices: dict[str, float] | None = None) -> PortfolioSnapshot:
         portfolio = self.portfolio_repository.load_portfolio() or PortfolioSnapshot.bootstrap(self.starting_capital)
-        refreshed = self.refresh_portfolio(portfolio, market_prices or {})
-        self.portfolio_repository.save_portfolio(refreshed)
-        return refreshed
+        if not market_prices:
+            return portfolio
+        return self.refresh_portfolio(portfolio, market_prices)
 
     def refresh_portfolio(self, portfolio: PortfolioSnapshot, market_prices: dict[str, float]) -> PortfolioSnapshot:
         positions: dict[str, Position] = {}
         open_exposure = 0.0
-        unrealized = 0.0
+        marked_at = utc_now()
 
         for symbol, position in portfolio.positions.items():
+            has_fresh_price = symbol in market_prices
             last_price = market_prices.get(symbol, position.last_price)
-            updated = position.model_copy(update={"last_price": last_price})
+            updated = position.model_copy(
+                update={
+                    "last_price": last_price,
+                    "last_price_at": marked_at if has_fresh_price else position.last_price_at,
+                }
+            )
             positions[symbol] = updated
             open_exposure += updated.quantity * updated.last_price
-            unrealized += (updated.last_price - updated.average_price) * updated.quantity
 
         total_equity = portfolio.cash + open_exposure
-        daily_pnl = portfolio.realized_pnl + unrealized
+        daily_pnl = self._daily_pnl(total_equity, marked_at)
         return portfolio.model_copy(
             update={
-                "as_of": utc_now(),
+                "as_of": marked_at,
                 "positions": positions,
                 "open_exposure": round(open_exposure, 4),
                 "total_equity": round(total_equity, 4),
-                "daily_pnl": round(daily_pnl, 4),
+                "daily_pnl": daily_pnl,
             }
         )
 
+    def _daily_pnl(self, total_equity: float, marked_at) -> float | None:
+        history_loader = getattr(self.portfolio_repository, "load_portfolio_history", None)
+        if not callable(history_loader):
+            return None
+        snapshots = history_loader()
+        day_start = next(
+            (
+                snapshot
+                for snapshot in snapshots
+                if snapshot.as_of.date() == marked_at.date()
+            ),
+            None,
+        )
+        if day_start is None:
+            return None
+        return round(total_equity - day_start.total_equity, 4)
+
     def execute_signal(self, signal: TradeSignal, market_price: float, genome: StrategyGenome) -> ExecutionOrder:
-        portfolio = self.get_portfolio({signal.symbol: market_price})
+        portfolio = self.portfolio_repository.load_portfolio()
+        if portfolio is None:
+            portfolio = PortfolioSnapshot.bootstrap(self.starting_capital)
+            # Capture a real baseline only when an execution is requested, never from a read route.
+            self.portfolio_repository.save_portfolio(portfolio)
+        portfolio = self.refresh_portfolio(portfolio, {signal.symbol: market_price})
 
         if signal.action == SignalAction.HOLD:
             return ExecutionOrder(
@@ -138,6 +165,8 @@ class PaperBroker:
             opened_at=utc_now(),
             last_price=market_price,
             strategy_id=signal.strategy_id,
+            entry_fee_paid=round(fee, 4),
+            last_price_at=utc_now(),
         )
 
         updated_portfolio = portfolio.model_copy(
@@ -190,7 +219,7 @@ class PaperBroker:
         fill_price = market_price * (1 - self.slippage_multiplier)
         fee = fill_price * existing.quantity * self.fee_multiplier
         proceeds = (fill_price * existing.quantity) - fee
-        pnl = ((fill_price - existing.average_price) * existing.quantity) - fee
+        pnl = ((fill_price - existing.average_price) * existing.quantity) - fee - existing.entry_fee_paid
 
         positions = dict(portfolio.positions)
         del positions[signal.symbol]

@@ -27,6 +27,7 @@ from project_invest.services.worker import (
     BackgroundResearchWorker,
     BackgroundTradingWorker,
 )
+from project_invest.services.portfolio_summary import PortfolioSummaryService
 
 
 def _embedded_loops_enabled(container: ServiceContainer) -> bool:
@@ -427,6 +428,32 @@ async def latest_trading_report(request: Request):
 async def portfolio(request: Request):
     container = get_container(request)
     return container.execution_engine.get_portfolio()
+
+
+@app.get("/api/portfolio/summary")
+async def portfolio_summary(request: Request) -> dict[str, object]:
+    container = get_container(request)
+    return PortfolioSummaryService().build(
+        portfolio=container.storage.load_portfolio(),
+        history=container.storage.load_portfolio_history(),
+        starting_capital=container.settings.starting_capital,
+    )
+
+
+@app.get("/api/portfolio/history")
+async def portfolio_history(request: Request, limit: int = Query(default=2_000, ge=1, le=10_000)):
+    return get_container(request).storage.load_portfolio_history(limit=limit)
+
+
+@app.get("/api/positions")
+async def positions(request: Request) -> list[dict[str, object]]:
+    container = get_container(request)
+    summary = PortfolioSummaryService().build(
+        portfolio=container.storage.load_portfolio(),
+        history=container.storage.load_portfolio_history(),
+        starting_capital=container.settings.starting_capital,
+    )
+    return summary["positions"]
 
 
 @app.get("/api/trades")

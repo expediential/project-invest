@@ -186,6 +186,8 @@ class Position(BaseModel):
     opened_at: datetime
     last_price: float
     strategy_id: str
+    entry_fee_paid: float = 0.0
+    last_price_at: datetime | None = None
 
 
 class PortfolioSnapshot(BaseModel):
@@ -195,7 +197,7 @@ class PortfolioSnapshot(BaseModel):
     starting_capital: float
     cash: float
     realized_pnl: float = 0.0
-    daily_pnl: float = 0.0
+    daily_pnl: float | None = None
     open_exposure: float = 0.0
     total_equity: float
     positions: dict[str, Position] = Field(default_factory=dict)
@@ -207,6 +209,35 @@ class PortfolioSnapshot(BaseModel):
             starting_capital=starting_capital,
             cash=starting_capital,
             total_equity=starting_capital,
+        )
+
+
+class PortfolioHistorySnapshot(BaseModel):
+    """Immutable accounting point captured when the persisted portfolio changes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = 1
+    snapshot_id: str = Field(default_factory=lambda: f"portfolio-{uuid4().hex}")
+    captured_at: datetime = Field(default_factory=utc_now)
+    as_of: datetime
+    starting_capital: float
+    cash: float
+    realized_pnl: float
+    open_exposure: float
+    total_equity: float
+    position_count: int
+
+    @classmethod
+    def from_portfolio(cls, portfolio: PortfolioSnapshot) -> "PortfolioHistorySnapshot":
+        return cls(
+            as_of=portfolio.as_of,
+            starting_capital=portfolio.starting_capital,
+            cash=portfolio.cash,
+            realized_pnl=portfolio.realized_pnl,
+            open_exposure=portfolio.open_exposure,
+            total_equity=portfolio.total_equity,
+            position_count=len(portfolio.positions),
         )
 
 

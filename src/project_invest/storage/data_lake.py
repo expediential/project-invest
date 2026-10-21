@@ -13,6 +13,7 @@ from project_invest.domain.models import (
     Candle,
     ExecutionOrder,
     FeatureRow,
+    PortfolioHistorySnapshot,
     PortfolioSnapshot,
     ResearchCycleReport,
     ResearchEvent,
@@ -149,6 +150,7 @@ class LocalDataLake:
         path = self.root / "state" / "portfolio.json"
         with self._acquire_lock(path):
             self._write_json(path, portfolio.model_dump(mode="json"))
+        self._append_portfolio_snapshot(portfolio)
 
     def load_portfolio(self) -> PortfolioSnapshot | None:
         path = self.root / "state" / "portfolio.json"
@@ -159,12 +161,38 @@ class LocalDataLake:
             return None
         return PortfolioSnapshot.model_validate(payload)
 
+    def _append_portfolio_snapshot(self, portfolio: PortfolioSnapshot) -> None:
+        path = self.root / "state" / "portfolio-history.json"
+        snapshot = PortfolioHistorySnapshot.from_portfolio(portfolio)
+        with self._acquire_lock(path):
+            payload: list[dict[str, Any]] = []
+            if path.exists():
+                payload = self._read_json(path, default=[]) or []
+            payload.append(snapshot.model_dump(mode="json"))
+            self._write_json(path, payload)
+
+    def load_portfolio_history(self, limit: int | None = None) -> list[PortfolioHistorySnapshot]:
+        path = self.root / "state" / "portfolio-history.json"
+        if not path.exists():
+            return []
+        snapshots = [
+            PortfolioHistorySnapshot.model_validate(item)
+            for item in (self._read_json(path, default=[]) or [])
+        ]
+        snapshots.sort(key=lambda item: (item.captured_at, item.snapshot_id))
+        return snapshots if limit is None else snapshots[-limit:]
+
     def append_trade(self, trade: ExecutionOrder) -> None:
         path = self.root / "trades" / "history.json"
         with self._acquire_lock(path):
             payload: list[dict[str, Any]] = []
             if path.exists():
                 payload = self._read_json(path, default=[]) or []
+            existing = next((item for item in payload if item.get("trade_id") == trade.trade_id), None)
+            if existing is not None:
+                if existing != trade.model_dump(mode="json"):
+                    raise ValueError(f"Conflicting duplicate trade id: {trade.trade_id}")
+                return
             payload.append(trade.model_dump(mode="json"))
             self._write_json(path, payload)
 

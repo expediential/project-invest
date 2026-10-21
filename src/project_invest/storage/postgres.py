@@ -7,6 +7,7 @@ from project_invest.domain.models import (
     Candle,
     ExecutionOrder,
     FeatureRow,
+    PortfolioHistorySnapshot,
     PortfolioSnapshot,
     ResearchCycleReport,
     ResearchEvent,
@@ -64,6 +65,17 @@ class PostgresResearchStorage:
                 payload JSONB NOT NULL,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
+            """,
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.schema}.portfolio_history (
+                snapshot_id TEXT PRIMARY KEY,
+                captured_at TIMESTAMPTZ NOT NULL,
+                payload JSONB NOT NULL
+            )
+            """,
+            f"""
+            CREATE INDEX IF NOT EXISTS portfolio_history_captured_at_idx
+            ON {self.schema}.portfolio_history (captured_at)
             """,
             f"""
             CREATE TABLE IF NOT EXISTS {self.schema}.trade_history (
@@ -177,6 +189,15 @@ class PostgresResearchStorage:
             """,
             (portfolio.model_dump(mode="json"),),
         )
+        snapshot = PortfolioHistorySnapshot.from_portfolio(portfolio)
+        self._upsert_json(
+            f"""
+            INSERT INTO {self.schema}.portfolio_history (snapshot_id, captured_at, payload)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (snapshot_id) DO NOTHING
+            """,
+            (snapshot.snapshot_id, snapshot.captured_at, snapshot.model_dump(mode="json")),
+        )
 
     def load_portfolio(self) -> PortfolioSnapshot | None:
         row = self._fetch_one(
@@ -189,6 +210,26 @@ class PostgresResearchStorage:
         if row is None:
             return None
         return PortfolioSnapshot.model_validate(row["payload"])
+
+    def load_portfolio_history(self, limit: int | None = None) -> list[PortfolioHistorySnapshot]:
+        limit_clause = ""
+        params: list[Any] = []
+        order_clause = "ORDER BY captured_at ASC"
+        if limit is not None:
+            order_clause = "ORDER BY captured_at DESC"
+            limit_clause = "LIMIT %s"
+            params.append(limit)
+        rows = self._fetch_all(
+            f"""
+            SELECT payload
+            FROM {self.schema}.portfolio_history
+            {order_clause}
+            {limit_clause}
+            """,
+            tuple(params),
+        )
+        snapshots = [PortfolioHistorySnapshot.model_validate(row["payload"]) for row in rows]
+        return snapshots if limit is None else list(reversed(snapshots))
 
     def append_trade(self, trade: ExecutionOrder) -> None:
         self._upsert_json(
