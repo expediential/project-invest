@@ -45,9 +45,124 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       }}
 
       .terminal {{
-        max-width: 1320px;
+        max-width: 1560px;
         margin: 0 auto;
         padding: 20px 18px 40px;
+      }}
+
+      .workstation-shell {{
+        display: grid;
+        grid-template-columns: 224px minmax(0, 1fr);
+        gap: 16px;
+        align-items: start;
+      }}
+
+      .workspace-nav {{
+        position: sticky;
+        top: 16px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: rgba(11, 19, 36, 0.92);
+        box-shadow: 0 18px 30px rgba(2, 6, 23, 0.28);
+      }}
+
+      .workspace-nav .nav-title {{
+        padding: 8px 10px 12px;
+        color: var(--muted);
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }}
+
+      .workspace-nav button {{
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 2px 0;
+        padding: 9px 10px;
+        border-radius: 10px;
+        border-color: transparent;
+        background: transparent;
+        color: var(--muted);
+        font-size: 0.8rem;
+        text-align: left;
+      }}
+
+      .workspace-nav button:hover,
+      .workspace-nav button.active {{
+        color: var(--ink);
+        background: rgba(56, 189, 248, 0.12);
+        border-color: rgba(56, 189, 248, 0.24);
+        box-shadow: none;
+      }}
+
+      .workspace-content {{
+        min-width: 0;
+      }}
+
+      .runtime-board {{
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 16px;
+      }}
+
+      .runtime-card {{
+        min-height: 134px;
+        padding: 14px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: linear-gradient(180deg, rgba(18, 28, 47, 0.98), rgba(11, 19, 36, 0.96));
+      }}
+
+      .runtime-card h2 {{
+        margin: 0 0 10px;
+        color: var(--muted);
+        font-size: 0.7rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }}
+
+      .runtime-card .runtime-value {{
+        font-size: 1rem;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+      }}
+
+      .runtime-card .runtime-detail {{
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 0.78rem;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+      }}
+
+      .data-table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.82rem;
+      }}
+
+      .data-table th,
+      .data-table td {{
+        padding: 10px 8px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        white-space: nowrap;
+      }}
+
+      .data-table th {{
+        color: var(--muted);
+        font-size: 0.68rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }}
+
+      .table-wrap {{
+        overflow-x: auto;
       }}
 
       .topbar {{
@@ -692,6 +807,32 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       }}
 
       @media (max-width: 1100px) {{
+        .workstation-shell {{
+          grid-template-columns: 1fr;
+        }}
+
+        .workspace-nav {{
+          position: static;
+          display: flex;
+          overflow-x: auto;
+          gap: 4px;
+          padding: 8px;
+        }}
+
+        .workspace-nav .nav-title {{
+          display: none;
+        }}
+
+        .workspace-nav button {{
+          width: max-content;
+          flex: 0 0 auto;
+          white-space: nowrap;
+        }}
+
+        .runtime-board {{
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }}
+
         .overview-strip {{
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }}
@@ -714,6 +855,9 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       }}
 
       @media (max-width: 720px) {{
+        .runtime-board {{
+          grid-template-columns: 1fr;
+        }}
         .overview-strip {{
           grid-template-columns: 1fr;
         }}
@@ -727,7 +871,25 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
   </head>
   <body>
     <main class="terminal">
-      <header class="topbar">
+      <div class="workstation-shell">
+        <aside class="workspace-nav" aria-label="Terminal navigation">
+          <div class="nav-title">Project Invest</div>
+          <button class="active" data-jump="overview">Overview <span>01</span></button>
+          <button data-jump="portfolio">Portfolio <span>02</span></button>
+          <button data-jump="positions">Positions <span>03</span></button>
+          <button data-jump="orders">Orders <span>04</span></button>
+          <button data-jump="opportunities">Opportunities <span>05</span></button>
+          <button data-jump="strategy-lab-panel">Strategy Lab <span>06</span></button>
+          <button data-jump="learning-panel">Experiments <span>07</span></button>
+          <button data-jump="risk-panel">Risk <span>08</span></button>
+          <button data-jump="compute-panel">Compute <span>09</span></button>
+          <button data-jump="data-quality-panel">Data Quality <span>10</span></button>
+          <button data-jump="system-health">System Health <span>11</span></button>
+          <button data-jump="settings-panel">Settings <span>12</span></button>
+        </aside>
+
+        <div class="workspace-content">
+      <header class="topbar" id="overview">
         <div class="topbar-header">
           <div class="brand">{safe_app_name} Terminal</div>
           <div class="controls">
@@ -746,9 +908,16 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
         <div class="signal-ticker" id="signal-ticker"></div>
       </header>
 
-      <section class="overview-strip" id="overview-kpis"></section>
+      <section class="runtime-board" id="system-health">
+        <article class="runtime-card"><h2>Runtime</h2><div class="runtime-value" id="runtime-health-value">Waiting for health...</div><div class="runtime-detail" id="runtime-health-detail">The API reports only verified local process state.</div></article>
+        <article class="runtime-card" id="compute-panel"><h2>Compute</h2><div class="runtime-value" id="compute-value">Waiting for compute status...</div><div class="runtime-detail" id="compute-detail">No remote capacity is assumed.</div></article>
+        <article class="runtime-card" id="data-quality-panel"><h2>Data Quality</h2><div class="runtime-value" id="quality-value">Waiting for stored-data audit...</div><div class="runtime-detail" id="quality-detail">Reads do not trigger provider ingestion.</div></article>
+        <article class="runtime-card" id="settings-panel"><h2>Settings</h2><div class="runtime-value" id="settings-value">Waiting for configuration...</div><div class="runtime-detail" id="settings-detail">Configuration is display-only here; secrets are never returned.</div></article>
+      </section>
 
-      <section class="grid-main">
+      <section class="overview-strip" id="portfolio"></section>
+
+      <section class="grid-main" id="opportunities">
         <aside class="panel soft">
           <h2>Market Scanner</h2>
           <div class="muted" id="scanner-meta">Loading scan...</div>
@@ -786,27 +955,33 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
         </aside>
       </section>
 
-      <section class="panel soft" style="margin-top: 16px;">
+      <section class="panel soft" id="orders" style="margin-top: 16px;">
         <h2>Trade Timeline</h2>
         <div class="muted timeline-meta" id="timeline-meta">Recent decisions and execution notes.</div>
         <ul class="list scroller" id="timeline"></ul>
       </section>
 
       <section class="grid-bottom">
-        <article class="panel soft">
+        <article class="panel soft" id="strategy-lab-panel">
           <h2>Strategy Lab</h2>
           <ul class="list scroller" id="strategy-lab"></ul>
         </article>
-        <article class="panel soft">
+        <article class="panel soft" id="risk-panel">
           <h2>Portfolio Risk</h2>
           <div class="kpi-grid" id="risk-kpis"></div>
         </article>
-        <article class="panel soft">
+        <article class="panel soft" id="learning-panel">
           <h2>Learning Engine</h2>
           <div class="kpi-grid" id="learning-kpis"></div>
           <div class="panel-note" id="learning-note">Trade memory is warming up.</div>
           <ul class="list scroller" id="learning"></ul>
         </article>
+      </section>
+
+      <section class="panel soft" id="positions" style="margin-top: 16px;">
+        <h2>Open Positions</h2>
+        <div class="muted" id="positions-meta">Waiting for the paper portfolio summary.</div>
+        <div class="table-wrap" id="positions-table"></div>
       </section>
 
       <section class="panel soft" style="margin-top: 16px;">
@@ -820,6 +995,8 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
         </div>
         <div class="muted" id="replay-details">Trade details will appear here.</div>
       </section>
+        </div>
+      </div>
     </main>
 
     <script>
@@ -850,6 +1027,16 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       const replayCanvas = document.getElementById("replay-chart");
       const refreshMetaNode = document.getElementById("refresh-meta");
       const autoRefreshNode = document.getElementById("auto-refresh");
+      const runtimeHealthValueNode = document.getElementById("runtime-health-value");
+      const runtimeHealthDetailNode = document.getElementById("runtime-health-detail");
+      const computeValueNode = document.getElementById("compute-value");
+      const computeDetailNode = document.getElementById("compute-detail");
+      const qualityValueNode = document.getElementById("quality-value");
+      const qualityDetailNode = document.getElementById("quality-detail");
+      const settingsValueNode = document.getElementById("settings-value");
+      const settingsDetailNode = document.getElementById("settings-detail");
+      const positionsMetaNode = document.getElementById("positions-meta");
+      const positionsTableNode = document.getElementById("positions-table");
 
       let activeSymbol = null;
       let activeReplayTrade = null;
@@ -914,6 +1101,12 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
 
       function renderMarketChip(market, isActive) {{
         return `<span class="chip ${{isActive ? "active" : ""}}" data-market="${{market}}">${{market}}</span>`;
+      }}
+
+      function escapeHtml(value) {{
+        return String(value ?? "").replace(/[&<>'"]/g, (character) => ({{
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
+        }}[character]));
       }}
 
       function drawCanvasPlaceholder(canvas, message) {{
@@ -989,16 +1182,55 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
 
       function renderOverview(portfolio, analytics, health) {{
         const lastRun = analytics.last_run ? new Date(analytics.last_run).toLocaleTimeString() : "n/a";
-        const openPositions = Object.keys(portfolio.positions || {{}}).length;
+        const ready = portfolio.state === "ready";
+        const openPositions = ready ? portfolio.open_positions : "n/a";
         const engineState = health.runtime && health.runtime.trading_worker
           ? health.runtime.trading_worker.state
           : "not reported";
         overviewKpisNode.innerHTML = [
-          `<article class="hero-kpi"><div class="label">Portfolio Equity</div><div class="value">${{currency.format(portfolio.total_equity || 0)}}</div><div class="sub">Cash ${{currency.format(portfolio.cash || 0)}}</div></article>`,
-          `<article class="hero-kpi"><div class="label">Daily PnL</div><div class="value ${{toneClass(portfolio.daily_pnl)}}">${{currency.format(portfolio.daily_pnl || 0)}}</div><div class="sub">Realized ${{currency.format(portfolio.realized_pnl || 0)}}</div></article>`,
-          `<article class="hero-kpi"><div class="label">Open Positions</div><div class="value">${{openPositions}}</div><div class="sub">Exposure ${{currency.format(portfolio.open_exposure || 0)}}</div></article>`,
+          `<article class="hero-kpi"><div class="label">Portfolio Equity</div><div class="value">${{ready ? currency.format(portfolio.equity) : "n/a"}}</div><div class="sub">${{ready ? `Cash ${{currency.format(portfolio.cash)}}` : escapeHtml(portfolio.message || "No paper portfolio yet.")}}</div></article>`,
+          `<article class="hero-kpi"><div class="label">Total PnL</div><div class="value ${{toneClass(portfolio.total_pnl)}}">${{ready ? currency.format(portfolio.total_pnl) : "n/a"}}</div><div class="sub">Realized ${{ready ? currency.format(portfolio.realized_pnl) : "n/a"}}</div></article>`,
+          `<article class="hero-kpi"><div class="label">Open Positions</div><div class="value">${{openPositions}}</div><div class="sub">Exposure ${{ready ? currency.format(portfolio.gross_exposure) : "n/a"}}</div></article>`,
           `<article class="hero-kpi"><div class="label">Engine State</div><div class="value">${{engineState}}</div><div class="sub">Last cycle ${{lastRun}}</div></article>`
         ].join("");
+      }}
+
+      function renderRuntimeBoard(health, dataQuality, compute, config) {{
+        const runtime = health.runtime || {{}};
+        const research = runtime.research_worker || {{ state: "not reported" }};
+        const trading = runtime.trading_worker || {{ state: "not reported" }};
+        const workerDetail = (label, worker) => {{
+          const heartbeat = worker.heartbeat_at ? new Date(worker.heartbeat_at).toLocaleTimeString() : "none";
+          const success = worker.last_success_at ? new Date(worker.last_success_at).toLocaleTimeString() : "none";
+          const error = worker.last_error ? ` | error: ${{worker.last_error}}` : "";
+          return `${{label}} ${{worker.state || "unknown"}} | heartbeat ${{heartbeat}} | last success ${{success}}${{error}}`;
+        }};
+        runtimeHealthValueNode.textContent = `API ${{health.status || "unknown"}} · storage ${{runtime.storage?.state || "unknown"}}`;
+        runtimeHealthDetailNode.textContent = `${{workerDetail("Research", research)}}\n${{workerDetail("Trading", trading)}}`;
+        computeValueNode.textContent = compute.local_backend?.status === "available" ? "Local backend available" : "Compute unavailable";
+        computeDetailNode.textContent = compute.remote_backend?.status === "not_configured"
+          ? "Remote compute is not configured; no remote job data is invented."
+          : (compute.note || "No compute detail reported.");
+        const availableRecords = (dataQuality.records || []).filter((record) => record.status === "available").length;
+        qualityValueNode.textContent = `${{dataQuality.status || "unknown"}} · ${{availableRecords}}/${{(dataQuality.records || []).length}} symbols`;
+        qualityDetailNode.textContent = dataQuality.note || "No stored-data quality report is available.";
+        settingsValueNode.textContent = `${{config.execution_mode || "unknown"}} · ${{config.storage_backend || "unknown"}} storage`;
+        settingsDetailNode.textContent = `Data: ${{config.market_data_provider || "unknown"}} | loops: research=${{config.research_loop_enabled ? "on" : "off"}}, trading=${{config.trading_loop_enabled ? "on" : "off"}} | no secrets displayed`;
+      }}
+
+      function renderPositions(portfolio) {{
+        const positions = portfolio.positions || [];
+        if (portfolio.state !== "ready") {{
+          positionsMetaNode.textContent = portfolio.message || "No paper portfolio has been created yet.";
+          positionsTableNode.innerHTML = `<div class="empty-state">Run a paper trading cycle after configuration to populate positions.</div>`;
+          return;
+        }}
+        positionsMetaNode.textContent = `${{positions.length}} open positions | as of ${{portfolio.as_of ? new Date(portfolio.as_of).toLocaleString() : "n/a"}} | reconciliation delta ${{currency.format(portfolio.pnl_reconciliation_delta)}}`;
+        if (!positions.length) {{
+          positionsTableNode.innerHTML = `<div class="empty-state">No open positions. This is a flat paper portfolio, not a zero-filled placeholder.</div>`;
+          return;
+        }}
+        positionsTableNode.innerHTML = `<table class="data-table"><thead><tr><th>Symbol</th><th>Qty</th><th>Entry</th><th>Last</th><th>Market Value</th><th>Unrealized</th><th>Return</th><th>Weight</th></tr></thead><tbody>${{positions.map((position) => `<tr><td>${{escapeHtml(position.symbol)}}</td><td>${{position.quantity}}</td><td>${{formatPrice(position.average_entry_price, position.symbol)}}</td><td>${{formatPrice(position.last_price, position.symbol)}}</td><td>${{currency.format(position.market_value)}}</td><td class="${{toneClass(position.unrealized_pnl)}}">${{currency.format(position.unrealized_pnl)}}</td><td class="${{toneClass(position.return_pct)}}">${{formatPercent(position.return_pct, 2)}}</td><td>${{formatPercent(position.weight_pct, 2)}}</td></tr>`).join("")}}</tbody></table>`;
       }}
 
       function ensureSymbols(symbols) {{
@@ -1154,7 +1386,7 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
         }}
         dashboardLoading = true;
         try {{
-          const [health, analytics, learning, tradeMemory, portfolio, researchReport, tradingReport, events, universe] = await Promise.all([
+          const [health, analytics, learning, tradeMemory, portfolio, portfolioSummary, dataQuality, compute, config, researchReport, tradingReport, events, universe] = await Promise.all([
             fetchJsonSafe("/health", null, true),
             fetchJsonSafe("/api/analytics/summary", {{
               status: "no-data",
@@ -1186,6 +1418,14 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
               realized_pnl: 0,
               positions: {{}},
             }}),
+            fetchJsonSafe("/api/portfolio/summary", {{
+              state: "unavailable",
+              message: "Portfolio summary is unavailable.",
+              positions: [],
+            }}),
+            fetchJsonSafe("/api/data-quality", {{ status: "unavailable", records: [] }}),
+            fetchJsonSafe("/api/research/compute-status", {{}}),
+            fetchJsonSafe("/api/config", {{}}),
             fetchJsonSafe("/api/research/latest", null),
             fetchJsonSafe("/api/trading/latest", null),
             fetchJsonSafe("/api/events?limit=30", []),
@@ -1241,12 +1481,14 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
 
           ensureSymbols((activeReport && activeReport.symbols) || health.research_symbols || []);
 
-          renderOverview(portfolio, analytics, health);
+          renderOverview(portfolioSummary, analytics, health);
+          renderRuntimeBoard(health, dataQuality, compute, config);
+          renderPositions(portfolioSummary);
           renderTicker(events);
           renderScanner(activeReport);
           renderTimeline(events);
           renderStrategyLab(analytics);
-          renderRisk(portfolio);
+          renderRisk(portfolioSummary);
           renderLearning(learning, tradeMemory);
 
           if (activeSymbol) {{
@@ -1431,12 +1673,16 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       }}
 
       function renderRisk(portfolio) {{
+        if (portfolio.state !== "ready") {{
+          riskKpisNode.innerHTML = `<div class="empty-state">${{escapeHtml(portfolio.message || "No paper portfolio metrics are available yet.")}}</div>`;
+          return;
+        }}
         riskKpisNode.innerHTML = [
           `<div class="kpi"><div class="label">Capital</div><div class="value">${{currency.format(portfolio.starting_capital || 0)}}</div></div>`,
-          `<div class="kpi"><div class="label">Equity</div><div class="value">${{currency.format(portfolio.total_equity || 0)}}</div></div>`,
-          `<div class="kpi"><div class="label">Exposure</div><div class="value">${{currency.format(portfolio.open_exposure || 0)}}</div></div>`,
-          `<div class="kpi"><div class="label">Daily PnL</div><div class="value ${{toneClass(portfolio.daily_pnl)}}">${{currency.format(portfolio.daily_pnl || 0)}}</div></div>`,
-          `<div class="kpi"><div class="label">Open Positions</div><div class="value">${{Object.keys(portfolio.positions || {{}}).length}}</div></div>`,
+          `<div class="kpi"><div class="label">Equity</div><div class="value">${{currency.format(portfolio.equity)}}</div></div>`,
+          `<div class="kpi"><div class="label">Exposure</div><div class="value">${{currency.format(portfolio.gross_exposure)}}</div></div>`,
+          `<div class="kpi"><div class="label">Daily PnL</div><div class="value ${{toneClass(portfolio.daily_pnl)}}">${{portfolio.daily_pnl_available ? currency.format(portfolio.daily_pnl) : "n/a"}}</div></div>`,
+          `<div class="kpi"><div class="label">Open Positions</div><div class="value">${{portfolio.open_positions}}</div></div>`,
           `<div class="kpi"><div class="label">Realized PnL</div><div class="value ${{toneClass(portfolio.realized_pnl)}}">${{currency.format(portfolio.realized_pnl || 0)}}</div></div>`
         ].join("");
       }}
@@ -1802,6 +2048,17 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
           }}
         }});
       }}
+      document.querySelectorAll(".workspace-nav [data-jump]").forEach((button) => {{
+        button.addEventListener("click", () => {{
+          const target = document.getElementById(button.dataset.jump);
+          if (!target) {{
+            return;
+          }}
+          document.querySelectorAll(".workspace-nav [data-jump]").forEach((item) => item.classList.remove("active"));
+          button.classList.add("active");
+          target.scrollIntoView({{ behavior: "smooth", block: "start" }});
+        }});
+      }});
 
       renderRefreshMeta();
       loadDashboard();

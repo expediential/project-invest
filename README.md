@@ -8,7 +8,7 @@ Project Invest is an experimental, paper-only quantitative research workspace. I
 
 ## What works today
 
-- FastAPI dashboard and read-only health, market, portfolio, trade, event, analytics, portfolio-summary/history, data-quality, and compute-status endpoints.
+- FastAPI workstation dashboard and read-only health/runtime, market, portfolio, trade, event, analytics, portfolio-summary/history, data-quality, and compute-status endpoints.
 - Read-only portfolio-summary/history/position APIs with fee-aware accounting, stored-snapshot performance history, data-quality status, and an honest local/Cosmos compute-status view.
 - Explicit research-only and paper-trading worker modes, local JSON storage, optional Postgres/Redis storage paths, and Yahoo or explicitly opted-in mock data.
 - Basic technical features, three bounded rule-based strategy families, cost-aware backtests, promotion gates, risk limits, and paper portfolio accounting.
@@ -53,6 +53,8 @@ cp .env.example .env
 ```
 
 Open `http://127.0.0.1:8000`. Read-only routes are available without a token. The normal local `launch` command creates a temporary token and signs the localhost dashboard in automatically for that run. Direct API calls require `Authorization: Bearer <PROJECT_INVEST_API_AUTH_TOKEN>`; API-only and non-local runs without a token return a safe `503` response.
+
+The workstation is read-only on refresh: chart and feature panels use already stored data and never trigger a provider request. Its runtime strip distinguishes API, storage, stored-market-data freshness, research-worker heartbeat, trading-worker heartbeat, and unavailable remote compute. `POST` cycle controls remain the only dashboard actions that can start a research or paper-trading cycle.
 
 ## Running the system
 
