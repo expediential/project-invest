@@ -22,3 +22,5 @@ def test_active_dashboard_keeps_operational_controls_and_data_views() -> None:
     assert "/api/data-quality" in html
     assert "/api/research/compute-status" in html
     assert "/api/config" in html
+    assert "if (!positionsMetaNode || !positionsTableNode)" in html
+    assert "if (!riskKpisNode)" in html

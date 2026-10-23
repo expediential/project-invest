@@ -1181,6 +1181,9 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       }}
 
       function renderOverview(portfolio, analytics, health) {{
+        if (!overviewKpisNode) {{
+          return;
+        }}
         const lastRun = analytics.last_run ? new Date(analytics.last_run).toLocaleTimeString() : "n/a";
         const ready = portfolio.state === "ready";
         const openPositions = ready ? portfolio.open_positions : "n/a";
@@ -1196,6 +1199,9 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       }}
 
       function renderRuntimeBoard(health, dataQuality, compute, config) {{
+        if (!runtimeHealthValueNode || !runtimeHealthDetailNode || !computeValueNode || !computeDetailNode || !qualityValueNode || !qualityDetailNode || !settingsValueNode || !settingsDetailNode) {{
+          return;
+        }}
         const runtime = health.runtime || {{}};
         const research = runtime.research_worker || {{ state: "not reported" }};
         const trading = runtime.trading_worker || {{ state: "not reported" }};
@@ -1219,6 +1225,9 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       }}
 
       function renderPositions(portfolio) {{
+        if (!positionsMetaNode || !positionsTableNode) {{
+          return;
+        }}
         const positions = portfolio.positions || [];
         if (portfolio.state !== "ready") {{
           positionsMetaNode.textContent = portfolio.message || "No paper portfolio has been created yet.";
@@ -1673,6 +1682,9 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       }}
 
       function renderRisk(portfolio) {{
+        if (!riskKpisNode) {{
+          return;
+        }}
         if (portfolio.state !== "ready") {{
           riskKpisNode.innerHTML = `<div class="empty-state">${{escapeHtml(portfolio.message || "No paper portfolio metrics are available yet.")}}</div>`;
           return;
