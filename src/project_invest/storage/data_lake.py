@@ -17,11 +17,14 @@ from project_invest.domain.models import (
     PortfolioSnapshot,
     ResearchCycleReport,
     ResearchEvent,
+    ResearchJob,
+    ResearchJobStatus,
     RuntimeComponentStatus,
     TradeMemoryRecord,
     TradeMemoryStatus,
     StrategyGenome,
     StrategyRegistryEntry,
+    utc_now,
 )
 
 
@@ -332,6 +335,57 @@ class LocalDataLake:
         if not isinstance(payload, dict):
             return []
         return [RuntimeComponentStatus.model_validate(item) for item in payload.values()]
+
+    def create_job(self, job: ResearchJob) -> None:
+        path = self.root / "state" / "jobs.json"
+        with self._acquire_lock(path):
+            jobs = self._read_json(path, default=[]) if path.exists() else []
+            if any(item.get("job_id") == job.job_id for item in jobs):
+                raise ValueError(f"Research job already exists: {job.job_id}")
+            jobs.append(job.model_dump(mode="json"))
+            self._write_json(path, jobs)
+
+    def list_jobs(self, limit: int | None = None) -> list[ResearchJob]:
+        path = self.root / "state" / "jobs.json"
+        if not path.exists():
+            return []
+        jobs = [ResearchJob.model_validate(item) for item in (self._read_json(path, default=[]) or [])]
+        jobs.sort(key=lambda item: (item.created_at, item.job_id))
+        return jobs if limit is None else jobs[-limit:]
+
+    def get_job(self, job_id: str) -> ResearchJob | None:
+        return next((job for job in self.list_jobs() if job.job_id == job_id), None)
+
+    def update_job(self, job: ResearchJob) -> None:
+        path = self.root / "state" / "jobs.json"
+        with self._acquire_lock(path):
+            jobs = self._read_json(path, default=[]) if path.exists() else []
+            for index, item in enumerate(jobs):
+                if item.get("job_id") == job.job_id:
+                    jobs[index] = job.model_dump(mode="json")
+                    self._write_json(path, jobs)
+                    return
+            raise KeyError(f"Research job does not exist: {job.job_id}")
+
+    def claim_next_job(self, worker_id: str) -> ResearchJob | None:
+        path = self.root / "state" / "jobs.json"
+        with self._acquire_lock(path):
+            jobs = self._read_json(path, default=[]) if path.exists() else []
+            for index, item in enumerate(jobs):
+                job = ResearchJob.model_validate(item)
+                if job.status != ResearchJobStatus.QUEUED or job.execution_backend != "local":
+                    continue
+                now = utc_now()
+                job.status = ResearchJobStatus.RUNNING
+                job.claimed_by = worker_id
+                job.started_at = now
+                job.heartbeat_at = now
+                job.updated_at = now
+                job.attempt_count += 1
+                jobs[index] = job.model_dump(mode="json")
+                self._write_json(path, jobs)
+                return job
+        return None
 
     def close(self) -> None:
         return None

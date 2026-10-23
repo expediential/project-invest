@@ -10,6 +10,7 @@ from project_invest.domain.models import (
     PortfolioSnapshot,
     ResearchCycleReport,
     ResearchEvent,
+    ResearchJob,
     RuntimeComponentStatus,
     TradeMemoryRecord,
     StrategyGenome,
@@ -108,6 +109,23 @@ class RuntimeStatusRepository(Protocol):
         """Load worker lifecycle states written by this runtime's processes."""
 
 
+class ResearchJobRepository(Protocol):
+    def create_job(self, job: ResearchJob) -> None:
+        """Durably append a queued research job."""
+
+    def list_jobs(self, limit: int | None = None) -> list[ResearchJob]:
+        """Return jobs ordered by creation time."""
+
+    def get_job(self, job_id: str) -> ResearchJob | None:
+        """Load a single job by its stable identifier."""
+
+    def update_job(self, job: ResearchJob) -> None:
+        """Replace a job state after a validated lifecycle transition."""
+
+    def claim_next_job(self, worker_id: str) -> ResearchJob | None:
+        """Atomically claim one queued local job, if one exists."""
+
+
 class ResearchStorage(
     CandleRepository,
     FeatureRepository,
@@ -120,6 +138,7 @@ class ResearchStorage(
     ActiveStrategyRepository,
     StrategyRegistryRepository,
     RuntimeStatusRepository,
+    ResearchJobRepository,
     Protocol,
 ):
     backend_name: str

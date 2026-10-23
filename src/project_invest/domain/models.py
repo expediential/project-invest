@@ -67,6 +67,39 @@ class RuntimeComponentState(str, Enum):
     STOPPED = "stopped"
 
 
+class ResearchJobStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class ResearchJob(BaseModel):
+    """Durable, paper-safe unit of research work for the local executor."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str = Field(default_factory=lambda: uuid4().hex)
+    job_type: Literal["research_cycle"] = "research_cycle"
+    purpose: str = "On-demand research cycle"
+    status: ResearchJobStatus = ResearchJobStatus.QUEUED
+    execution_backend: Literal["local", "cosmos"] = "local"
+    experiment_config: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=utc_now)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    updated_at: datetime = Field(default_factory=utc_now)
+    heartbeat_at: datetime | None = None
+    progress: float | None = None
+    resource_usage: dict[str, float] = Field(default_factory=dict)
+    result_reference: str | None = None
+    failure_reason: str | None = None
+    claimed_by: str | None = None
+    attempt_count: int = 0
+    cancellation_requested_at: datetime | None = None
+
+
 class RuntimeComponentStatus(BaseModel):
     """Persisted heartbeat from a worker process, safe to read from the API process."""
 

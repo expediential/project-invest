@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     trading_loop_seconds: int = 900
     live_loop_enabled: bool = False
     live_loop_seconds: int = 300
+    runtime_monitor_enabled: bool = True
+    runtime_monitor_interval_seconds: int = 5
+    runtime_monitor_history_size: int = 120
+    job_executor_enabled: bool = True
+    job_executor_poll_seconds: int = 2
+    local_lite_concurrency: int = 1
+    local_lite_job_timeout_seconds: int = 1800
+    local_lite_cpu_threshold_percent: float = 85.0
+    local_lite_memory_threshold_percent: float = 85.0
 
     starting_capital: float = 100000.0
     max_risk_per_trade: float = 0.01
@@ -209,6 +218,10 @@ class Settings(BaseSettings):
             raise ValueError("max_risk_per_trade must be greater than 0 and no more than 1.")
         if self.order_slippage_bps < 0 or self.fee_bps < 0:
             raise ValueError("order_slippage_bps and fee_bps must be non-negative.")
+        if self.local_lite_concurrency != 1:
+            raise ValueError("LOCAL-LITE supports exactly one local research job at a time.")
+        if self.runtime_monitor_interval_seconds < 2 or self.job_executor_poll_seconds < 1:
+            raise ValueError("Runtime monitor and job executor intervals must be positive and bounded.")
         return self
 
 

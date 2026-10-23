@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
 from project_invest.api.dashboard import render_dashboard
-from project_invest.api.schemas import ResearchRunRequest
+from project_invest.api.schemas import ResearchJobRequest, ResearchRunRequest
 from project_invest.config import settings
 from project_invest.container import ServiceContainer, build_container
 from project_invest.services.universe import (
@@ -29,6 +29,8 @@ from project_invest.services.worker import (
     BackgroundTradingWorker,
 )
 from project_invest.services.portfolio_summary import PortfolioSummaryService
+from project_invest.services.job_queue import LocalResearchJobExecutor, summarize_jobs
+from project_invest.services.runtime_monitor import RuntimeMonitor
 
 
 def _utc_now() -> datetime:
@@ -41,6 +43,37 @@ def _load_runtime_statuses(container: ServiceContainer) -> tuple[dict[str, objec
     except Exception as exc:
         return {}, f"Runtime status storage could not be read: {exc}"
     return {status.component: status for status in statuses}, None
+
+
+def _job_queue_available(container: ServiceContainer) -> bool:
+    return all(
+        callable(getattr(container.storage, method, None))
+        for method in ("create_job", "list_jobs", "get_job", "update_job", "claim_next_job")
+    )
+
+
+def _job_runtime_view(request: Request, container: ServiceContainer) -> dict[str, object]:
+    executor = getattr(request.app.state, "job_executor", None)
+    if not _job_queue_available(container):
+        return {"state": "unavailable", "supported": False, "records": [], "error": "Storage backend does not support durable jobs."}
+    try:
+        summary = summarize_jobs(container.storage)
+    except Exception as exc:
+        return {"state": "degraded", "supported": True, "records": [], "error": str(exc)}
+    state = "running" if executor and executor.current_job_id else "idle"
+    return {
+        "state": state,
+        "supported": executor is not None,
+        "executor_enabled": executor is not None,
+        "current_job_id": executor.current_job_id if executor else None,
+        "last_success_at": executor.last_success_at if executor else None,
+        "last_error": executor.last_error if executor else None,
+        "records": summary["jobs"],
+        "counts": summary["counts"],
+        "stale_job_ids": summary["stale_job_ids"],
+        "note": summary["note"],
+        "error": None,
+    }
 
 
 def _runtime_component_view(status, interval_seconds: int) -> dict[str, object]:
@@ -197,6 +230,21 @@ async def lifespan(app: FastAPI):
     container = build_container(settings)
     app.state.container = container
     app.state.started_at = _utc_now()
+    app.state.runtime_monitor = RuntimeMonitor(
+        sample_interval_seconds=container.settings.runtime_monitor_interval_seconds,
+        history_size=container.settings.runtime_monitor_history_size,
+    )
+    app.state.job_executor = None
+    if container.settings.runtime_monitor_enabled:
+        await app.state.runtime_monitor.start()
+    if container.settings.job_executor_enabled and _job_queue_available(container):
+        app.state.job_executor = LocalResearchJobExecutor(
+            storage=container.storage,
+            research_lab=container.research_lab,
+            poll_interval_seconds=container.settings.job_executor_poll_seconds,
+            job_timeout_seconds=container.settings.local_lite_job_timeout_seconds,
+        )
+        await app.state.job_executor.start()
     app.state.legacy_worker = None
     app.state.research_worker = None
     app.state.trading_worker = None
@@ -239,6 +287,12 @@ async def lifespan(app: FastAPI):
         await research_worker.stop()
     if trading_worker is not None:
         await trading_worker.stop()
+    job_executor = getattr(app.state, "job_executor", None)
+    if job_executor is not None:
+        await job_executor.stop()
+    runtime_monitor = getattr(app.state, "runtime_monitor", None)
+    if runtime_monitor is not None:
+        await runtime_monitor.stop()
     container.close()
 
 
@@ -355,6 +409,12 @@ async def health(request: Request) -> dict[str, object]:
     trading_status = _runtime_component_view(
         persisted_statuses.get("trading_worker"), container.settings.trading_loop_seconds
     )
+    jobs_status = _job_runtime_view(request, container)
+    runtime_monitor = getattr(request.app.state, "runtime_monitor", None)
+    monitor_status = runtime_monitor.snapshot() if runtime_monitor is not None else {
+        "state": "unavailable",
+        "error": "Runtime monitor is disabled.",
+    }
     worker_last_error = storage_error or runtime_status_error
     startup_error = getattr(request.app.state, "worker_startup_error", None)
     if startup_error:
@@ -417,6 +477,7 @@ async def health(request: Request) -> dict[str, object]:
                 "started_at": getattr(request.app.state, "started_at", None),
                 "version": "0.1.0",
             },
+            "monitor": monitor_status,
             "storage": {
                 "state": "connected" if storage_error is None else "degraded",
                 "backend": container.storage.backend_name,
@@ -425,7 +486,7 @@ async def health(request: Request) -> dict[str, object]:
             "market_data": _market_data_view(container, resolved_symbols),
             "research_worker": research_status,
             "trading_worker": trading_status,
-            "jobs": {"supported": False, "records": []},
+            "jobs": jobs_status,
         },
     }
 
@@ -434,6 +495,48 @@ async def health(request: Request) -> dict[str, object]:
 async def runtime_status(request: Request) -> dict[str, object]:
     """Detailed, non-secret status for the independently launched local processes."""
     return await health(request)
+
+
+@app.get("/api/runtime/monitor")
+async def runtime_monitor(request: Request) -> dict[str, object]:
+    """Return the latest cached local telemetry; this endpoint never samples synchronously."""
+    monitor = getattr(request.app.state, "runtime_monitor", None)
+    if monitor is None:
+        return {"state": "unavailable", "error": "Runtime monitor is disabled.", "metrics": {}}
+    return monitor.snapshot()
+
+
+@app.get("/api/jobs")
+async def jobs(request: Request, limit: int = Query(default=20, ge=1, le=200)) -> dict[str, object]:
+    container = get_container(request)
+    if not _job_queue_available(container):
+        return {"state": "unavailable", "supported": False, "jobs": [], "error": "Storage backend does not support durable jobs."}
+    summary = summarize_jobs(container.storage, limit=limit)
+    return {"state": "available", "supported": True, **summary}
+
+
+@app.post("/api/jobs/research")
+async def submit_research_job(request: Request, payload: ResearchJobRequest | None = None):
+    require_operational_access(request)
+    executor = getattr(request.app.state, "job_executor", None)
+    if executor is None:
+        raise HTTPException(status_code=503, detail="The LOCAL-LITE research executor is unavailable.")
+    return executor.submit_research(
+        symbols=payload.symbols if payload else None,
+        purpose=payload.purpose if payload else "On-demand research cycle",
+    )
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str, request: Request):
+    require_operational_access(request)
+    executor = getattr(request.app.state, "job_executor", None)
+    if executor is None:
+        raise HTTPException(status_code=503, detail="The LOCAL-LITE research executor is unavailable.")
+    job = executor.request_cancel(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Research job not found.")
+    return job
 
 
 @app.get("/api/config")
@@ -637,19 +740,26 @@ async def data_quality(request: Request) -> dict[str, object]:
 @app.get("/api/research/compute-status")
 async def compute_status(request: Request) -> dict[str, object]:
     container = get_container(request)
+    jobs_status = _job_runtime_view(request, container)
     return {
         "local_backend": {
             "status": "available",
-            "purpose": "Local research and paper-trading workers",
-            "worker_topology": "standalone",
+            "purpose": "LOCAL-LITE research jobs and paper-trading workers",
+            "worker_topology": "single-concurrency durable queue",
+            "profile": "LOCAL-LITE",
+            "concurrency": container.settings.local_lite_concurrency,
+            "job_timeout_seconds": container.settings.local_lite_job_timeout_seconds,
+            "cpu_threshold_percent": container.settings.local_lite_cpu_threshold_percent,
+            "memory_threshold_percent": container.settings.local_lite_memory_threshold_percent,
+            "limits_note": "Resource values are monitoring thresholds; the executor does not kill processes or claim OS-enforced limits.",
         },
         "remote_backend": {
             "status": "not_configured",
             "name": "Cosmos",
             "message": "Remote compute is not configured. Scheduler, authentication, allocation, network, storage, and runtime details are required before integration.",
         },
-        "jobs": [],
-        "note": "No remote job, GPU, scheduler, or utilization data is reported until a verified backend exists.",
+        "jobs": jobs_status,
+        "note": "Cosmos stays unavailable until an administrator confirms authentication, scheduler, allocation, storage, and network requirements.",
         "storage_backend": container.storage.backend_name,
     }
 

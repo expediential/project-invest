@@ -11,6 +11,8 @@ from project_invest.domain.models import (
     PortfolioSnapshot,
     ResearchCycleReport,
     ResearchEvent,
+    ResearchJob,
+    ResearchJobStatus,
     RuntimeComponentStatus,
     TradeMemoryRecord,
     TradeMemoryStatus,
@@ -129,6 +131,19 @@ class PostgresResearchStorage:
                 payload JSONB NOT NULL,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
+            """,
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.schema}.research_jobs (
+                job_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL,
+                payload JSONB NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """,
+            f"""
+            CREATE INDEX IF NOT EXISTS research_jobs_claim_idx
+            ON {self.schema}.research_jobs (status, created_at)
             """,
         ]
         with self._connect() as connection:
@@ -469,6 +484,79 @@ class PostgresResearchStorage:
     def load_runtime_statuses(self) -> list[RuntimeComponentStatus]:
         rows = self._fetch_all(f"SELECT payload FROM {self.schema}.runtime_status ORDER BY component")
         return [RuntimeComponentStatus.model_validate(row["payload"]) for row in rows]
+
+    def create_job(self, job: ResearchJob) -> None:
+        self._upsert_json(
+            f"""
+            INSERT INTO {self.schema}.research_jobs (job_id, status, created_at, payload, updated_at)
+            VALUES (%s, %s, %s, %s, NOW())
+            """,
+            (job.job_id, job.status.value, job.created_at, job.model_dump(mode="json")),
+        )
+
+    def list_jobs(self, limit: int | None = None) -> list[ResearchJob]:
+        statement = f"SELECT payload FROM {self.schema}.research_jobs ORDER BY created_at"
+        params: tuple[Any, ...] = ()
+        if limit is not None:
+            statement += " DESC LIMIT %s"
+            params = (limit,)
+        rows = self._fetch_all(statement, params)
+        jobs = [ResearchJob.model_validate(row["payload"]) for row in rows]
+        return list(reversed(jobs)) if limit is not None else jobs
+
+    def get_job(self, job_id: str) -> ResearchJob | None:
+        row = self._fetch_one(
+            f"SELECT payload FROM {self.schema}.research_jobs WHERE job_id = %s",
+            (job_id,),
+        )
+        return ResearchJob.model_validate(row["payload"]) if row else None
+
+    def update_job(self, job: ResearchJob) -> None:
+        self._upsert_json(
+            f"""
+            UPDATE {self.schema}.research_jobs
+            SET status = %s, payload = %s, updated_at = NOW()
+            WHERE job_id = %s
+            """,
+            (job.status.value, job.model_dump(mode="json"), job.job_id),
+        )
+
+    def claim_next_job(self, worker_id: str) -> ResearchJob | None:
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"""
+                    SELECT job_id, payload FROM {self.schema}.research_jobs
+                    WHERE status = %s AND payload->>'execution_backend' = 'local'
+                    ORDER BY created_at
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT 1
+                    """,
+                    (ResearchJobStatus.QUEUED.value,),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                job = ResearchJob.model_validate(row["payload"])
+                from project_invest.domain.models import utc_now
+
+                now = utc_now()
+                job.status = ResearchJobStatus.RUNNING
+                job.claimed_by = worker_id
+                job.started_at = now
+                job.heartbeat_at = now
+                job.updated_at = now
+                job.attempt_count += 1
+                cursor.execute(
+                    f"""
+                    UPDATE {self.schema}.research_jobs
+                    SET status = %s, payload = %s, updated_at = NOW()
+                    WHERE job_id = %s
+                    """,
+                    self._wrap_json_params((job.status.value, job.model_dump(mode="json"), job.job_id)),
+                )
+            connection.commit()
+        return job
 
     def close(self) -> None:
         return None

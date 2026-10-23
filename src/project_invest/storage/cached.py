@@ -8,6 +8,7 @@ from project_invest.domain.models import (
     PortfolioSnapshot,
     ResearchCycleReport,
     ResearchEvent,
+    ResearchJob,
     RuntimeComponentStatus,
     TradeMemoryRecord,
     TradeMemoryStatus,
@@ -205,6 +206,21 @@ class CachedResearchStorage:
 
     def load_runtime_statuses(self) -> list[RuntimeComponentStatus]:
         return self.durable_storage.load_runtime_statuses()
+
+    def create_job(self, job: ResearchJob) -> None:
+        self.durable_storage.create_job(job)
+
+    def list_jobs(self, limit: int | None = None) -> list[ResearchJob]:
+        return self.durable_storage.list_jobs(limit=limit)
+
+    def get_job(self, job_id: str) -> ResearchJob | None:
+        return self.durable_storage.get_job(job_id)
+
+    def update_job(self, job: ResearchJob) -> None:
+        self.durable_storage.update_job(job)
+
+    def claim_next_job(self, worker_id: str) -> ResearchJob | None:
+        return self.durable_storage.claim_next_job(worker_id)
 
     def close(self) -> None:
         self.durable_storage.close()
