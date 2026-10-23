@@ -895,6 +895,7 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
           <div class="controls">
             {auth_control}
             <button class="primary" id="run-cycle">Run Research Cycle</button>
+            <button class="ghost" id="queue-research">Queue Research Job</button>
             <button class="secondary" id="run-trade">Run Trading Cycle</button>
             <button id="refresh">Refresh</button>
           </div>
@@ -913,6 +914,12 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
         <article class="runtime-card" id="compute-panel"><h2>Compute</h2><div class="runtime-value" id="compute-value">Waiting for compute status...</div><div class="runtime-detail" id="compute-detail">No remote capacity is assumed.</div></article>
         <article class="runtime-card" id="data-quality-panel"><h2>Data Quality</h2><div class="runtime-value" id="quality-value">Waiting for stored-data audit...</div><div class="runtime-detail" id="quality-detail">Reads do not trigger provider ingestion.</div></article>
         <article class="runtime-card" id="settings-panel"><h2>Settings</h2><div class="runtime-value" id="settings-value">Waiting for configuration...</div><div class="runtime-detail" id="settings-detail">Configuration is display-only here; secrets are never returned.</div></article>
+      </section>
+
+      <section class="panel soft" id="runtime-jobs-panel" style="margin-top: 16px;">
+        <h2>LOCAL-LITE Research Jobs</h2>
+        <div class="muted" id="jobs-meta">Waiting for durable job queue status.</div>
+        <div class="table-wrap" id="jobs-table"></div>
       </section>
 
       <section class="overview-strip" id="portfolio"></section>
@@ -1037,6 +1044,8 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       const settingsDetailNode = document.getElementById("settings-detail");
       const positionsMetaNode = document.getElementById("positions-meta");
       const positionsTableNode = document.getElementById("positions-table");
+      const jobsMetaNode = document.getElementById("jobs-meta");
+      const jobsTableNode = document.getElementById("jobs-table");
 
       let activeSymbol = null;
       let activeReplayTrade = null;
@@ -1087,6 +1096,18 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
           return currency.format(value);
         }}
         return `${{Number(value).toFixed(2)}}`;
+      }}
+
+      function formatBytes(value) {{
+        if (value == null || Number.isNaN(value)) return "n/a";
+        const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+        let amount = Number(value);
+        let unit = 0;
+        while (Math.abs(amount) >= 1024 && unit < units.length - 1) {{
+          amount /= 1024;
+          unit += 1;
+        }}
+        return `${{amount.toFixed(unit === 0 ? 0 : 1)}} ${{units[unit]}}`;
       }}
 
       function formatSignal(action) {{
@@ -1198,7 +1219,7 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
         ].join("");
       }}
 
-      function renderRuntimeBoard(health, dataQuality, compute, config) {{
+      function renderRuntimeBoard(health, dataQuality, compute, config, monitor, jobs) {{
         if (!runtimeHealthValueNode || !runtimeHealthDetailNode || !computeValueNode || !computeDetailNode || !qualityValueNode || !qualityDetailNode || !settingsValueNode || !settingsDetailNode) {{
           return;
         }}
@@ -1211,17 +1232,42 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
           const error = worker.last_error ? ` | error: ${{worker.last_error}}` : "";
           return `${{label}} ${{worker.state || "unknown"}} | heartbeat ${{heartbeat}} | last success ${{success}}${{error}}`;
         }};
-        runtimeHealthValueNode.textContent = `API ${{health.status || "unknown"}} · storage ${{runtime.storage?.state || "unknown"}}`;
-        runtimeHealthDetailNode.textContent = `${{workerDetail("Research", research)}}\n${{workerDetail("Trading", trading)}}`;
-        computeValueNode.textContent = compute.local_backend?.status === "available" ? "Local backend available" : "Compute unavailable";
+        const metrics = monitor.metrics || {{}};
+        const process = metrics.process || {{}};
+        const network = metrics.network || {{}};
+        runtimeHealthValueNode.textContent = `API ${{health.status || "unknown"}} · storage ${{runtime.storage?.state || "unknown"}} · telemetry ${{monitor.state || "unavailable"}}`;
+        runtimeHealthDetailNode.textContent = metrics.cpu_percent == null
+          ? `Telemetry: ${{monitor.error || "unavailable"}}\n${{workerDetail("Research", research)}}\n${{workerDetail("Trading", trading)}}`
+          : `CPU ${{formatPercent(metrics.cpu_percent, 1)}} | RAM ${{formatPercent(metrics.memory_percent, 1)}} (${{formatBytes(metrics.memory_available_bytes)}} free) | Disk ${{formatPercent(metrics.disk_percent, 1)}}\nNet ↓ ${{formatBytes(network.bytes_recv_per_second)}}/s ↑ ${{formatBytes(network.bytes_sent_per_second)}}/s | API process ${{formatPercent(process.cpu_percent, 1)}} CPU, ${{formatBytes(process.rss_bytes)}} RSS\n${{workerDetail("Research", research)}}\n${{workerDetail("Trading", trading)}}`;
+        const jobCounts = jobs.counts || {{}};
+        computeValueNode.textContent = compute.local_backend?.status === "available"
+          ? `LOCAL-LITE · running ${{jobCounts.running || 0}} · queued ${{jobCounts.queued || 0}}`
+          : "Compute unavailable";
         computeDetailNode.textContent = compute.remote_backend?.status === "not_configured"
-          ? "Remote compute is not configured; no remote job data is invented."
+          ? `Remote compute is not configured. ${{jobs.note || "No remote job data is invented."}}`
           : (compute.note || "No compute detail reported.");
         const availableRecords = (dataQuality.records || []).filter((record) => record.status === "available").length;
         qualityValueNode.textContent = `${{dataQuality.status || "unknown"}} · ${{availableRecords}}/${{(dataQuality.records || []).length}} symbols`;
         qualityDetailNode.textContent = dataQuality.note || "No stored-data quality report is available.";
         settingsValueNode.textContent = `${{config.execution_mode || "unknown"}} · ${{config.storage_backend || "unknown"}} storage`;
         settingsDetailNode.textContent = `Data: ${{config.market_data_provider || "unknown"}} | loops: research=${{config.research_loop_enabled ? "on" : "off"}}, trading=${{config.trading_loop_enabled ? "on" : "off"}} | no secrets displayed`;
+      }}
+
+      function renderJobs(jobs) {{
+        if (!jobsMetaNode || !jobsTableNode) return;
+        if (!jobs.supported) {{
+          jobsMetaNode.textContent = jobs.error || "Durable local jobs are unavailable.";
+          jobsTableNode.innerHTML = `<div class="empty-state">No job executor is available. Portfolio and read-only dashboard data remain available.</div>`;
+          return;
+        }}
+        const records = jobs.jobs || [];
+        const counts = jobs.counts || {{}};
+        jobsMetaNode.textContent = `Queued ${{counts.queued || 0}} | Running ${{counts.running || 0}} | Succeeded ${{counts.succeeded || 0}} | Failed ${{counts.failed || 0}} | Cancelled ${{counts.cancelled || 0}}`;
+        if (!records.length) {{
+          jobsTableNode.innerHTML = `<div class="empty-state">No jobs running or queued. Submit a research job explicitly when you want one.</div>`;
+          return;
+        }}
+        jobsTableNode.innerHTML = `<table class="data-table"><thead><tr><th>Status</th><th>Purpose</th><th>Backend</th><th>Created</th><th>Heartbeat</th><th>Result / error</th></tr></thead><tbody>${{records.slice().reverse().map((job) => `<tr><td>${{escapeHtml(job.status)}}</td><td>${{escapeHtml(job.purpose)}}</td><td>${{escapeHtml(job.execution_backend)}}</td><td>${{job.created_at ? new Date(job.created_at).toLocaleString() : "n/a"}}</td><td>${{job.heartbeat_at ? new Date(job.heartbeat_at).toLocaleTimeString() : "n/a"}}</td><td>${{escapeHtml(job.failure_reason || job.result_reference || "n/a")}}</td></tr>`).join("")}}</tbody></table>`;
       }}
 
       function renderPositions(portfolio) {{
@@ -1395,7 +1441,7 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
         }}
         dashboardLoading = true;
         try {{
-          const [health, analytics, learning, tradeMemory, portfolio, portfolioSummary, dataQuality, compute, config, researchReport, tradingReport, events, universe] = await Promise.all([
+          const [health, analytics, learning, tradeMemory, portfolio, portfolioSummary, dataQuality, compute, config, monitor, jobs, researchReport, tradingReport, events, universe] = await Promise.all([
             fetchJsonSafe("/health", null, true),
             fetchJsonSafe("/api/analytics/summary", {{
               status: "no-data",
@@ -1435,6 +1481,8 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
             fetchJsonSafe("/api/data-quality", {{ status: "unavailable", records: [] }}),
             fetchJsonSafe("/api/research/compute-status", {{}}),
             fetchJsonSafe("/api/config", {{}}),
+            fetchJsonSafe("/api/runtime/monitor", {{ state: "unavailable", metrics: {{}}, error: "Runtime telemetry unavailable." }}),
+            fetchJsonSafe("/api/jobs", {{ supported: false, jobs: [], counts: {{}} }}),
             fetchJsonSafe("/api/research/latest", null),
             fetchJsonSafe("/api/trading/latest", null),
             fetchJsonSafe("/api/events?limit=30", []),
@@ -1491,7 +1539,8 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
           ensureSymbols((activeReport && activeReport.symbols) || health.research_symbols || []);
 
           renderOverview(portfolioSummary, analytics, health);
-          renderRuntimeBoard(health, dataQuality, compute, config);
+          renderRuntimeBoard(health, dataQuality, compute, config, monitor, jobs);
+          renderJobs(jobs);
           renderPositions(portfolioSummary);
           renderTicker(events);
           renderScanner(activeReport);
@@ -2015,14 +2064,34 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
         }}
       }}
 
+      async function queueResearchJob() {{
+        const button = document.getElementById("queue-research");
+        button.disabled = true;
+        button.textContent = "Queueing...";
+        try {{
+          const result = await postJson("/api/jobs/research");
+          setBanner(`Research job ${{result.job_id || "queued"}} was queued for the LOCAL-LITE executor.`, "success");
+          await loadDashboard();
+        }} catch (error) {{
+          setBanner(`Research job could not be queued: ${{error.message}}`, "error");
+        }} finally {{
+          button.disabled = false;
+          button.textContent = "Queue Research Job";
+        }}
+      }}
+
       const runCycleButton = document.getElementById("run-cycle");
       const runTradeButton = document.getElementById("run-trade");
+      const queueResearchButton = document.getElementById("queue-research");
       const refreshButton = document.getElementById("refresh");
       if (runCycleButton) {{
         runCycleButton.addEventListener("click", runCycle);
       }}
       if (runTradeButton) {{
         runTradeButton.addEventListener("click", runTradeCycle);
+      }}
+      if (queueResearchButton) {{
+        queueResearchButton.addEventListener("click", queueResearchJob);
       }}
       if (refreshButton) {{
         refreshButton.addEventListener("click", loadDashboard);
