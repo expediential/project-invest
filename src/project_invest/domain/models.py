@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -56,6 +57,31 @@ class TradeMemoryOutcome(str, Enum):
     WIN = "win"
     LOSS = "loss"
     FLAT = "flat"
+
+
+class RuntimeComponentState(str, Enum):
+    IDLE = "idle"
+    STARTING = "starting"
+    RUNNING = "running"
+    FAILED = "failed"
+    STOPPED = "stopped"
+
+
+class RuntimeComponentStatus(BaseModel):
+    """Persisted heartbeat from a worker process, safe to read from the API process."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    component: Literal["research_worker", "trading_worker"]
+    state: RuntimeComponentState
+    updated_at: datetime = Field(default_factory=utc_now)
+    heartbeat_at: datetime = Field(default_factory=utc_now)
+    started_at: datetime | None = None
+    cycle_started_at: datetime | None = None
+    last_success_at: datetime | None = None
+    last_error: str | None = None
+    last_error_at: datetime | None = None
+    last_cycle_duration_seconds: float | None = None
 
 
 class Candle(BaseModel):

@@ -17,6 +17,7 @@ from project_invest.domain.models import (
     PortfolioSnapshot,
     ResearchCycleReport,
     ResearchEvent,
+    RuntimeComponentStatus,
     TradeMemoryRecord,
     TradeMemoryStatus,
     StrategyGenome,
@@ -315,6 +316,22 @@ class LocalDataLake:
         if not path.exists():
             return []
         return [StrategyRegistryEntry.model_validate(item) for item in (self._read_json(path, default=[]) or [])]
+
+    def save_runtime_status(self, status: RuntimeComponentStatus) -> None:
+        path = self.root / "state" / "runtime-status.json"
+        with self._acquire_lock(path):
+            current = self._read_json(path, default={}) if path.exists() else {}
+            current[status.component] = status.model_dump(mode="json")
+            self._write_json(path, current)
+
+    def load_runtime_statuses(self) -> list[RuntimeComponentStatus]:
+        path = self.root / "state" / "runtime-status.json"
+        if not path.exists():
+            return []
+        payload = self._read_json(path, default={}) or {}
+        if not isinstance(payload, dict):
+            return []
+        return [RuntimeComponentStatus.model_validate(item) for item in payload.values()]
 
     def close(self) -> None:
         return None

@@ -189,6 +189,7 @@ async def run_worker(
             trading_lab=container.trading_lab,
             interval_seconds=effective_interval,
             symbols=resolved_symbols,
+            status_repository=container.storage,
         )
     else:
         effective_interval = interval_seconds or settings.research_loop_seconds
@@ -197,6 +198,7 @@ async def run_worker(
             interval_seconds=effective_interval,
             symbols=resolved_symbols,
             execute_trades=False,
+            status_repository=container.storage,
         )
     stop_event = asyncio.Event()
 

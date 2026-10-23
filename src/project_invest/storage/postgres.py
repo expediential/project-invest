@@ -11,6 +11,7 @@ from project_invest.domain.models import (
     PortfolioSnapshot,
     ResearchCycleReport,
     ResearchEvent,
+    RuntimeComponentStatus,
     TradeMemoryRecord,
     TradeMemoryStatus,
     StrategyGenome,
@@ -118,6 +119,13 @@ class PostgresResearchStorage:
             f"""
             CREATE TABLE IF NOT EXISTS {self.schema}.strategy_registry (
                 symbol TEXT PRIMARY KEY,
+                payload JSONB NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """,
+            f"""
+            CREATE TABLE IF NOT EXISTS {self.schema}.runtime_status (
+                component TEXT PRIMARY KEY,
                 payload JSONB NOT NULL,
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
@@ -446,6 +454,21 @@ class PostgresResearchStorage:
         if row is None:
             return []
         return [StrategyRegistryEntry.model_validate(item) for item in row["payload"]]
+
+    def save_runtime_status(self, status: RuntimeComponentStatus) -> None:
+        self._upsert_json(
+            f"""
+            INSERT INTO {self.schema}.runtime_status (component, payload, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (component)
+            DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+            """,
+            (status.component, status.model_dump(mode="json")),
+        )
+
+    def load_runtime_statuses(self) -> list[RuntimeComponentStatus]:
+        rows = self._fetch_all(f"SELECT payload FROM {self.schema}.runtime_status ORDER BY component")
+        return [RuntimeComponentStatus.model_validate(row["payload"]) for row in rows]
 
     def close(self) -> None:
         return None

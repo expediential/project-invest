@@ -10,6 +10,7 @@ from project_invest.domain.models import (
     PortfolioSnapshot,
     ResearchCycleReport,
     ResearchEvent,
+    RuntimeComponentStatus,
     TradeMemoryRecord,
     StrategyGenome,
     StrategyRegistryEntry,
@@ -99,6 +100,14 @@ class StrategyRegistryRepository(Protocol):
         """Load the persisted registry of strategies for a symbol."""
 
 
+class RuntimeStatusRepository(Protocol):
+    def save_runtime_status(self, status: RuntimeComponentStatus) -> None:
+        """Persist the latest heartbeat and lifecycle state for one worker component."""
+
+    def load_runtime_statuses(self) -> list[RuntimeComponentStatus]:
+        """Load worker lifecycle states written by this runtime's processes."""
+
+
 class ResearchStorage(
     CandleRepository,
     FeatureRepository,
@@ -110,6 +119,7 @@ class ResearchStorage(
     TradeMemoryRepository,
     ActiveStrategyRepository,
     StrategyRegistryRepository,
+    RuntimeStatusRepository,
     Protocol,
 ):
     backend_name: str

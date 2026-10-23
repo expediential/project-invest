@@ -5,6 +5,7 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 from contextlib import suppress
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -28,6 +29,102 @@ from project_invest.services.worker import (
     BackgroundTradingWorker,
 )
 from project_invest.services.portfolio_summary import PortfolioSummaryService
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _load_runtime_statuses(container: ServiceContainer) -> tuple[dict[str, object], str | None]:
+    try:
+        statuses = container.storage.load_runtime_statuses()
+    except Exception as exc:
+        return {}, f"Runtime status storage could not be read: {exc}"
+    return {status.component: status for status in statuses}, None
+
+
+def _runtime_component_view(status, interval_seconds: int) -> dict[str, object]:
+    if status is None:
+        return {
+            "state": "not_reported",
+            "reported_state": None,
+            "heartbeat_at": None,
+            "started_at": None,
+            "cycle_started_at": None,
+            "last_success_at": None,
+            "last_error": None,
+            "last_error_at": None,
+            "last_cycle_duration_seconds": None,
+            "message": "No heartbeat has been received from this worker process.",
+        }
+    now = _utc_now()
+    heartbeat_age = max(0.0, (now - status.heartbeat_at).total_seconds())
+    # An in-progress cycle emits a heartbeat every 30 seconds.  Treat a missing
+    # active heartbeat promptly, while an idle worker is allowed to sleep until
+    # its next scheduled cycle.
+    stale_after_seconds = (
+        90
+        if status.state.value in {"starting", "running"}
+        else max(45, interval_seconds * 2 + 15)
+    )
+    is_stale = status.state.value in {"starting", "running", "idle"} and heartbeat_age > stale_after_seconds
+    return {
+        "state": "stale" if is_stale else status.state.value,
+        "reported_state": status.state.value,
+        "heartbeat_at": status.heartbeat_at,
+        "heartbeat_age_seconds": round(heartbeat_age, 1),
+        "stale_after_seconds": stale_after_seconds,
+        "started_at": status.started_at,
+        "cycle_started_at": status.cycle_started_at,
+        "last_success_at": status.last_success_at,
+        "last_error": status.last_error,
+        "last_error_at": status.last_error_at,
+        "last_cycle_duration_seconds": status.last_cycle_duration_seconds,
+        "message": (
+            "Worker heartbeat is stale; it may be blocked or the process may have exited."
+            if is_stale
+            else None
+        ),
+    }
+
+
+def _market_data_view(container: ServiceContainer, symbols: list[str]) -> dict[str, object]:
+    interval = container.settings.trading_interval
+    latest_timestamp = None
+    sources: set[str] = set()
+    try:
+        for symbol in symbols:
+            candles = container.storage.load_candles(symbol, interval, stage="processed")
+            if candles:
+                latest = candles[-1]
+                latest_timestamp = max(latest_timestamp, latest.timestamp) if latest_timestamp else latest.timestamp
+                sources.add(latest.data_source)
+    except Exception as exc:
+        return {"state": "degraded", "last_success_at": None, "sources": [], "error": str(exc)}
+    if latest_timestamp is None:
+        return {"state": "unavailable", "last_success_at": None, "sources": [], "error": None}
+    age_seconds = max(0.0, (_utc_now() - latest_timestamp).total_seconds())
+    stale_after = _interval_stale_after_seconds(interval)
+    return {
+        "state": "fresh" if age_seconds <= stale_after else "stale",
+        "last_success_at": latest_timestamp,
+        "age_seconds": round(age_seconds, 1),
+        "stale_after_seconds": stale_after,
+        "sources": sorted(sources),
+        "error": None,
+    }
+
+
+def _interval_stale_after_seconds(interval: str) -> int:
+    normalized = interval.strip().lower()
+    units = {"m": 60, "h": 3_600, "d": 86_400, "wk": 604_800}
+    for suffix, multiplier in units.items():
+        if normalized.endswith(suffix):
+            try:
+                return max(300, int(normalized[: -len(suffix)]) * multiplier * 3)
+            except ValueError:
+                break
+    return int(timedelta(days=3).total_seconds())
 
 
 def _embedded_loops_enabled(container: ServiceContainer) -> bool:
@@ -60,6 +157,7 @@ async def _boot_embedded_workers(
                 symbols=resolved_symbols,
                 execute_trades=False,
                 run_lock=loop_lock,
+                status_repository=container.storage,
             )
             await research_worker.start()
             app.state.research_worker = research_worker
@@ -70,6 +168,7 @@ async def _boot_embedded_workers(
                 interval_seconds=container.settings.trading_loop_seconds,
                 symbols=resolved_symbols,
                 run_lock=loop_lock,
+                status_repository=container.storage,
             )
             await trading_worker.start()
             app.state.trading_worker = trading_worker
@@ -82,6 +181,7 @@ async def _boot_embedded_workers(
                 interval_seconds=container.settings.live_loop_seconds,
                 symbols=resolved_symbols,
                 execute_trades=True,
+                status_repository=container.storage,
             )
             await legacy_worker.start()
             app.state.legacy_worker = legacy_worker
@@ -96,6 +196,7 @@ async def _boot_embedded_workers(
 async def lifespan(app: FastAPI):
     container = build_container(settings)
     app.state.container = container
+    app.state.started_at = _utc_now()
     app.state.legacy_worker = None
     app.state.research_worker = None
     app.state.trading_worker = None
@@ -229,8 +330,14 @@ async def health(request: Request) -> dict[str, object]:
     legacy_worker = getattr(request.app.state, "legacy_worker", None)
     research_worker = getattr(request.app.state, "research_worker", None)
     trading_worker = getattr(request.app.state, "trading_worker", None)
-    latest_research_report = container.storage.load_latest_report(stream="research")
-    latest_trading_report = container.storage.load_latest_report(stream="trading")
+    storage_error = None
+    try:
+        latest_research_report = container.storage.load_latest_report(stream="research")
+        latest_trading_report = container.storage.load_latest_report(stream="trading")
+    except Exception as exc:
+        latest_research_report = None
+        latest_trading_report = None
+        storage_error = str(exc)
     resolved_symbols = getattr(request.app.state, "resolved_symbols", None) or resolve_symbols(
         container.settings.research_symbols,
         container.settings.use_market_universes,
@@ -241,7 +348,14 @@ async def health(request: Request) -> dict[str, object]:
         container.settings.symbol_groups,
         container.settings.symbol_group_size,
     )
-    worker_last_error = None
+    persisted_statuses, runtime_status_error = _load_runtime_statuses(container)
+    research_status = _runtime_component_view(
+        persisted_statuses.get("research_worker"), container.settings.research_loop_seconds
+    )
+    trading_status = _runtime_component_view(
+        persisted_statuses.get("trading_worker"), container.settings.trading_loop_seconds
+    )
+    worker_last_error = storage_error or runtime_status_error
     startup_error = getattr(request.app.state, "worker_startup_error", None)
     if startup_error:
         worker_last_error = startup_error
@@ -250,10 +364,18 @@ async def health(request: Request) -> dict[str, object]:
         if last_error:
             worker_last_error = last_error
             break
-    worker_running = any([legacy_worker, research_worker, trading_worker])
+    if worker_last_error is None:
+        for worker_status in (research_status, trading_status):
+            if worker_status["last_error"]:
+                worker_last_error = worker_status["last_error"]
+                break
+    embedded_worker_running = any([legacy_worker, research_worker, trading_worker])
+    worker_running = embedded_worker_running or any(
+        worker["state"] in {"starting", "running"} for worker in (research_status, trading_status)
+    )
     embedded_loops_enabled = _embedded_loops_enabled(container)
     return {
-        "status": "ok",
+        "status": "degraded" if storage_error else "ok",
         "execution_mode": container.settings.execution_mode,
         "base_currency": container.settings.base_currency,
         "market_data_provider": container.settings.market_data_provider,
@@ -277,8 +399,8 @@ async def health(request: Request) -> dict[str, object]:
         "confirmation_long_window": container.settings.confirmation_long_window,
         "confirmation_min_trend_strength": container.settings.confirmation_min_trend_strength,
         "legacy_worker_running": legacy_worker is not None,
-        "research_worker_running": research_worker is not None,
-        "trading_worker_running": trading_worker is not None,
+        "research_worker_running": research_status["state"] in {"starting", "running"},
+        "trading_worker_running": trading_status["state"] in {"starting", "running"},
         "embedded_loops_enabled": embedded_loops_enabled,
         "worker_launch_mode": (
             "embedded"
@@ -289,7 +411,29 @@ async def health(request: Request) -> dict[str, object]:
         "embedded_worker_boot_status": getattr(request.app.state, "worker_boot_status", "idle"),
         "worker_running": worker_running,
         "worker_last_error": worker_last_error,
+        "runtime": {
+            "updated_at": _utc_now(),
+            "application": {
+                "started_at": getattr(request.app.state, "started_at", None),
+                "version": "0.1.0",
+            },
+            "storage": {
+                "state": "connected" if storage_error is None else "degraded",
+                "backend": container.storage.backend_name,
+                "error": storage_error,
+            },
+            "market_data": _market_data_view(container, resolved_symbols),
+            "research_worker": research_status,
+            "trading_worker": trading_status,
+            "jobs": {"supported": False, "records": []},
+        },
     }
+
+
+@app.get("/api/runtime/status")
+async def runtime_status(request: Request) -> dict[str, object]:
+    """Detailed, non-secret status for the independently launched local processes."""
+    return await health(request)
 
 
 @app.get("/api/config")
@@ -539,18 +683,7 @@ async def trade_memory_summary(request: Request, limit: int = Query(default=500,
 async def market_data(symbol: str, request: Request, interval: str | None = None):
     container = get_container(request)
     resolved_interval = resolve_interval(request, interval)
-    lookback_bars = (
-        container.settings.lookback_bars
-        if resolved_interval == container.settings.research_interval
-        else container.settings.trading_lookback_bars
-    )
     candles = container.storage.load_candles(symbol, resolved_interval, stage="processed")
-    if not candles:
-        _, candles = await container.ingestion.ingest_symbol(
-            symbol,
-            resolved_interval,
-            lookback_bars,
-        )
     return candles[-100:]
 
 
@@ -558,22 +691,7 @@ async def market_data(symbol: str, request: Request, interval: str | None = None
 async def features(symbol: str, request: Request, interval: str | None = None):
     container = get_container(request)
     resolved_interval = resolve_interval(request, interval)
-    lookback_bars = (
-        container.settings.lookback_bars
-        if resolved_interval == container.settings.research_interval
-        else container.settings.trading_lookback_bars
-    )
     rows = container.storage.load_features(symbol, resolved_interval)
-    if not rows:
-        candles = container.storage.load_candles(symbol, resolved_interval, stage="processed")
-        if not candles:
-            _, candles = await container.ingestion.ingest_symbol(
-                symbol,
-                resolved_interval,
-                lookback_bars,
-            )
-        rows = container.feature_engine.build_feature_rows(candles)
-        container.storage.store_features(symbol, resolved_interval, rows)
     return rows[-100:]
 
 

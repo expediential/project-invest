@@ -990,9 +990,9 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       function renderOverview(portfolio, analytics, health) {{
         const lastRun = analytics.last_run ? new Date(analytics.last_run).toLocaleTimeString() : "n/a";
         const openPositions = Object.keys(portfolio.positions || {{}}).length;
-        const engineState = health.worker_running
-          ? "Online"
-          : (health.worker_launch_mode === "standalone" ? "API Only" : "Starting");
+        const engineState = health.runtime && health.runtime.trading_worker
+          ? health.runtime.trading_worker.state
+          : "not reported";
         overviewKpisNode.innerHTML = [
           `<article class="hero-kpi"><div class="label">Portfolio Equity</div><div class="value">${{currency.format(portfolio.total_equity || 0)}}</div><div class="sub">Cash ${{currency.format(portfolio.cash || 0)}}</div></article>`,
           `<article class="hero-kpi"><div class="label">Daily PnL</div><div class="value ${{toneClass(portfolio.daily_pnl)}}">${{currency.format(portfolio.daily_pnl || 0)}}</div><div class="sub">Realized ${{currency.format(portfolio.realized_pnl || 0)}}</div></article>`,
@@ -1066,6 +1066,21 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
         statusBannerNode.textContent = message;
       }}
 
+      async function fetchWithTimeout(url, options = {{}}, timeoutMs = 12000) {{
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+        try {{
+          return await fetch(url, {{ ...options, signal: controller.signal }});
+        }} catch (error) {{
+          if (controller.signal.aborted) {{
+            throw new Error(`${{url}} timed out after ${{Math.round(timeoutMs / 1000)}} seconds`);
+          }}
+          throw error;
+        }} finally {{
+          window.clearTimeout(timer);
+        }}
+      }}
+
       async function postJson(url, body = {{}}) {{
         const tokenInput = document.getElementById("operational-token");
         const token = tokenInput ? tokenInput.value.trim() : "";
@@ -1073,11 +1088,11 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
         if (token) {{
           headers.Authorization = `Bearer ${{token}}`;
         }}
-        const response = await fetch(url, {{
+        const response = await fetchWithTimeout(url, {{
           method: "POST",
           headers,
           body: JSON.stringify(body)
-        }});
+        }}, 90000);
         const text = await response.text();
         let payload = null;
         if (text) {{
@@ -1098,7 +1113,15 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       }}
 
       async function fetchJsonSafe(url, fallback = null, required = false) {{
-        const response = await fetch(url);
+        let response;
+        try {{
+          response = await fetchWithTimeout(url);
+        }} catch (error) {{
+          if (!required) {{
+            return fallback;
+          }}
+          throw error;
+        }}
         const text = await response.text();
         if (!response.ok) {{
           if (!required) {{
@@ -1181,8 +1204,11 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
           }}
           statusRow.innerHTML = [
             ...markets.map((market) => renderMarketChip(market, market === activeMarketFilter)),
-            renderChip("Research", health.research_worker_running ? "running" : "stopped", health.research_worker_running ? "active" : ""),
-            renderChip("Trading", health.trading_worker_running ? "running" : "stopped", health.trading_worker_running ? "active" : ""),
+            renderChip("API", health.status || "unknown", health.status === "ok" ? "active" : "error"),
+            renderChip("Storage", health.runtime?.storage?.state || "unknown", health.runtime?.storage?.state === "connected" ? "active" : "error"),
+            renderChip("Data", health.runtime?.market_data?.state || "unknown", health.runtime?.market_data?.state === "fresh" ? "active" : ""),
+            renderChip("Research", health.runtime?.research_worker?.state || "not reported", health.runtime?.research_worker?.state === "running" ? "active" : ""),
+            renderChip("Trading", health.runtime?.trading_worker?.state || "not reported", health.runtime?.trading_worker?.state === "running" ? "active" : ""),
             renderChip("Legacy", health.legacy_worker_running ? "running" : "stopped", health.legacy_worker_running ? "active" : ""),
             renderChip("Mode", health.execution_mode || "paper"),
             renderChip("Launch", health.worker_launch_mode || "unknown", health.worker_launch_mode === "embedded" ? "active" : ""),
@@ -1194,10 +1220,13 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
             renderChip("Time", new Date().toLocaleTimeString())
           ].join("");
 
-          if (health.worker_last_error) {{
-            setBanner(`Worker warning: ${{health.worker_last_error}}`, "error");
-          }} else if (!health.worker_running && health.worker_launch_mode === "standalone") {{
-            setBanner(health.launch_hint || "API-only mode. Use run-project-invest.cmd for the full local stack.", "info");
+          const workerIssue = health.runtime?.research_worker?.last_error || health.runtime?.trading_worker?.last_error || health.worker_last_error;
+          if (workerIssue) {{
+            setBanner(`Worker warning: ${{workerIssue}}`, "error");
+          }} else if (health.runtime?.research_worker?.state === "stale" || health.runtime?.trading_worker?.state === "stale") {{
+            setBanner("A worker heartbeat is stale. No automatic restart or order resubmission was performed.", "error");
+          }} else if (health.runtime?.research_worker?.state === "not_reported" && health.runtime?.trading_worker?.state === "not_reported") {{
+            setBanner("Workers have not reported a heartbeat yet. The dashboard remains usable; start the local stack to run scheduled cycles.", "info");
           }} else {{
             const launchNote = health.launch_hint ? ` | ${{health.launch_hint}}` : "";
             setBanner(`Dashboard synced | interval ${{activeInterval}} | execution markets: ${{executionMarkets.join(", ") || "none"}}${{launchNote}}`, "info");
@@ -1513,19 +1542,25 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
         if (!symbol) {{
           return;
         }}
-        const report = await fetchJsonSafe("/api/trading/latest", null) || await fetchJsonSafe("/api/research/latest", null);
-        const intervalQuery = activeInterval ? `?interval=${{encodeURIComponent(activeInterval)}}` : "";
-        const [candles, features, trades, events] = await Promise.all([
-          fetchJsonSafe(`/api/market/${{symbol}}${{intervalQuery}}`, [], true),
-          fetchJsonSafe(`/api/features/${{symbol}}${{intervalQuery}}`, [], true),
-          fetchJsonSafe("/api/trades?limit=200", []),
-          fetchJsonSafe("/api/events?limit=200", []),
-        ]);
+        try {{
+          const report = await fetchJsonSafe("/api/trading/latest", null) || await fetchJsonSafe("/api/research/latest", null);
+          const intervalQuery = activeInterval ? `?interval=${{encodeURIComponent(activeInterval)}}` : "";
+          const [candles, features, trades, events] = await Promise.all([
+            fetchJsonSafe(`/api/market/${{symbol}}${{intervalQuery}}`, [], true),
+            fetchJsonSafe(`/api/features/${{symbol}}${{intervalQuery}}`, [], true),
+            fetchJsonSafe("/api/trades?limit=200", []),
+            fetchJsonSafe("/api/events?limit=200", []),
+          ]);
 
-        const symbolTrades = trades.filter((trade) => trade.symbol === symbol);
-        renderChart(chartCanvas, chartMetaNode, symbol, candles, features, symbolTrades);
-        renderBrain(symbol, report, features, events);
-        renderChartSnapshot(symbol, candles, features, report);
+          const symbolTrades = trades.filter((trade) => trade.symbol === symbol);
+          renderChart(chartCanvas, chartMetaNode, symbol, candles, features, symbolTrades);
+          renderBrain(symbol, report, features, events);
+          renderChartSnapshot(symbol, candles, features, report);
+        }} catch (error) {{
+          chartMetaNode.textContent = `Chart data unavailable: ${{error.message}}`;
+          drawCanvasPlaceholder(chartCanvas, "Stored chart data is unavailable.");
+          brainNoteNode.textContent = "Symbol details could not be refreshed.";
+        }}
       }}
 
       function renderChart(canvas, metaNode, symbol, candles, features, trades) {{

@@ -8,6 +8,7 @@ from project_invest.domain.models import (
     PortfolioSnapshot,
     ResearchCycleReport,
     ResearchEvent,
+    RuntimeComponentStatus,
     TradeMemoryRecord,
     TradeMemoryStatus,
     StrategyGenome,
@@ -198,6 +199,12 @@ class CachedResearchStorage:
             payload = [entry.model_dump(mode="json") for entry in entries]
             self.cache.set(key, payload)
         return entries
+
+    def save_runtime_status(self, status: RuntimeComponentStatus) -> None:
+        self.durable_storage.save_runtime_status(status)
+
+    def load_runtime_statuses(self) -> list[RuntimeComponentStatus]:
+        return self.durable_storage.load_runtime_statuses()
 
     def close(self) -> None:
         self.durable_storage.close()
