@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 import project_invest.api.app as app_module
 from project_invest.config import Settings
+from project_invest.domain.models import ResearchJob, ResearchJobStatus, utc_now
 
 
 class _DummyStorage:
@@ -13,6 +14,7 @@ class _DummyStorage:
 
     def __init__(self) -> None:
         self.candle_reads = 0
+        self.jobs: list[ResearchJob] = []
 
     def load_latest_report(self, stream: str = "research"):
         return None
@@ -27,6 +29,32 @@ class _DummyStorage:
         self.candle_reads += 1
         assert stage == "processed"
         return []
+
+    def create_job(self, job: ResearchJob) -> None:
+        self.jobs.append(job)
+
+    def list_jobs(self, limit: int | None = None) -> list[ResearchJob]:
+        return self.jobs if limit is None else self.jobs[-limit:]
+
+    def get_job(self, job_id: str) -> ResearchJob | None:
+        return next((job for job in self.jobs if job.job_id == job_id), None)
+
+    def update_job(self, job: ResearchJob) -> None:
+        for index, item in enumerate(self.jobs):
+            if item.job_id == job.job_id:
+                self.jobs[index] = job
+                return
+        raise KeyError(job.job_id)
+
+    def claim_next_job(self, worker_id: str) -> ResearchJob | None:
+        for job in self.jobs:
+            if job.status == ResearchJobStatus.QUEUED:
+                job.status = ResearchJobStatus.RUNNING
+                job.claimed_by = worker_id
+                job.started_at = utc_now()
+                job.heartbeat_at = job.started_at
+                return job
+        return None
 
     def close(self) -> None:
         return None
@@ -125,7 +153,7 @@ def test_run_trading_returns_detail_when_cycle_fails(monkeypatch) -> None:
     assert payload["detail"] == "Trading cycle failed: kaboom"
 
 
-def test_run_research_returns_detail_when_cycle_fails(monkeypatch) -> None:
+def test_run_research_queues_work_instead_of_running_it_in_http(monkeypatch) -> None:
     dummy_settings = Settings(
         research_symbols="RELIANCE.NS,TCS.NS",
         use_market_universes=False,
@@ -157,12 +185,17 @@ def test_run_research_returns_detail_when_cycle_fails(monkeypatch) -> None:
         )
 
     payload = response.json()
-    assert response.status_code == 500
-    assert payload["detail"] == "Research cycle failed: broken-research"
+    assert response.status_code == 200
+    assert payload["status"] == "queued"
 
 
 def test_operational_routes_fail_closed_without_valid_credentials(monkeypatch) -> None:
-    dummy_settings = Settings(research_symbols="RELIANCE.NS", use_market_universes=False)
+    monkeypatch.delenv("PROJECT_INVEST_API_AUTH_TOKEN", raising=False)
+    dummy_settings = Settings(
+        research_symbols="RELIANCE.NS",
+        use_market_universes=False,
+        api_auth_token=None,
+    )
     called = False
 
     async def should_not_run(symbols=None):
@@ -213,7 +246,7 @@ def test_monitoring_routes_report_stored_state_without_ingestion(monkeypatch) ->
 
     assert dashboard.status_code == 200
     assert "Terminal Test" in dashboard.text
-    assert "Run Research Cycle" in dashboard.text
+    assert "Queue Research Cycle" in dashboard.text
     assert summary.json()["state"] == "empty"
     assert summary.json()["base_currency"] == "USD"
     assert quality.json()["status"] == "partial"

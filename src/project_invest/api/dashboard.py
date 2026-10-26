@@ -894,8 +894,7 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
           <div class="brand">{safe_app_name} Terminal</div>
           <div class="controls">
             {auth_control}
-            <button class="primary" id="run-cycle">Run Research Cycle</button>
-            <button class="ghost" id="queue-research">Queue Research Job</button>
+            <button class="primary" id="run-cycle">Queue Research Cycle</button>
             <button class="secondary" id="run-trade">Run Trading Cycle</button>
             <button id="refresh">Refresh</button>
           </div>
@@ -2034,16 +2033,16 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
       async function runCycle() {{
         const button = document.getElementById("run-cycle");
         button.disabled = true;
-        button.textContent = "Running...";
+        button.textContent = "Queueing...";
         try {{
-          const result = await postJson("/api/research/run");
+          const result = await postJson("/api/jobs/research");
           await loadDashboard();
-          setBanner(`Research cycle finished for ${{(result.symbols || []).length}} symbols.`, "success");
+          setBanner(`Research job ${{result.job_id || "queued"}} was queued for LOCAL-LITE execution.`, "success");
         }} catch (error) {{
-          setBanner(`Research cycle failed: ${{error.message}}`, "error");
+          setBanner(`Research job could not be queued: ${{error.message}}`, "error");
         }} finally {{
           button.disabled = false;
-          button.textContent = "Run Research Cycle";
+          button.textContent = "Queue Research Cycle";
         }}
       }}
 
@@ -2064,34 +2063,15 @@ def render_dashboard(app_name: str, auto_local_auth: bool = False) -> str:
         }}
       }}
 
-      async function queueResearchJob() {{
-        const button = document.getElementById("queue-research");
-        button.disabled = true;
-        button.textContent = "Queueing...";
-        try {{
-          const result = await postJson("/api/jobs/research");
-          setBanner(`Research job ${{result.job_id || "queued"}} was queued for the LOCAL-LITE executor.`, "success");
-          await loadDashboard();
-        }} catch (error) {{
-          setBanner(`Research job could not be queued: ${{error.message}}`, "error");
-        }} finally {{
-          button.disabled = false;
-          button.textContent = "Queue Research Job";
-        }}
-      }}
 
       const runCycleButton = document.getElementById("run-cycle");
       const runTradeButton = document.getElementById("run-trade");
-      const queueResearchButton = document.getElementById("queue-research");
       const refreshButton = document.getElementById("refresh");
       if (runCycleButton) {{
         runCycleButton.addEventListener("click", runCycle);
       }}
       if (runTradeButton) {{
         runTradeButton.addEventListener("click", runTradeCycle);
-      }}
-      if (queueResearchButton) {{
-        queueResearchButton.addEventListener("click", queueResearchJob);
       }}
       if (refreshButton) {{
         refreshButton.addEventListener("click", loadDashboard);

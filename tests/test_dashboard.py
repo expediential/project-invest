@@ -7,9 +7,9 @@ def test_active_dashboard_keeps_operational_controls_and_data_views() -> None:
     html = render_dashboard("<Project Invest>", auto_local_auth=True)
 
     assert "&lt;Project Invest&gt;" in html
-    assert "Run Research Cycle" in html
+    assert "Queue Research Cycle" in html
     assert "Run Trading Cycle" in html
-    assert "/api/research/run" in html
+    assert "/api/jobs/research" in html
     assert "/api/trading/run" in html
     assert "/api/portfolio" in html
     assert "Local controls enabled" in html
@@ -22,7 +22,6 @@ def test_active_dashboard_keeps_operational_controls_and_data_views() -> None:
     assert "/api/data-quality" in html
     assert "/api/research/compute-status" in html
     assert "/api/config" in html
-    assert "Queue Research Job" in html
     assert "/api/runtime/monitor" in html
     assert "/api/jobs" in html
     assert "if (!positionsMetaNode || !positionsTableNode)" in html

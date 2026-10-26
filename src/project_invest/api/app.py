@@ -631,15 +631,15 @@ async def universe(request: Request) -> dict[str, object]:
 
 @app.post("/api/research/run")
 async def run_research(request: Request, payload: ResearchRunRequest | None = None):
+    """Compatibility route: enqueue research rather than running it in the HTTP request."""
     require_operational_access(request)
-    container = get_container(request)
-    symbols = payload.symbols if payload and payload.symbols else None
-    try:
-        return await container.research_lab.run_cycle(symbols, execute_trades=False)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Research cycle failed: {exc}") from exc
+    executor = getattr(request.app.state, "job_executor", None)
+    if executor is None:
+        raise HTTPException(status_code=503, detail="The LOCAL-LITE research executor is unavailable.")
+    return executor.submit_research(
+        symbols=payload.symbols if payload and payload.symbols else None,
+        purpose="Research cycle requested through the compatibility route",
+    )
 
 
 @app.post("/api/trading/run")
