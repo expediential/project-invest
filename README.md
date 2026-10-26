@@ -13,8 +13,10 @@ Project Invest is an experimental, paper-only quantitative research workspace. I
 - Explicit research-only and paper-trading worker modes, local JSON storage, optional Postgres/Redis storage paths, and Yahoo or explicitly opted-in mock data.
 - Basic technical features, three bounded rule-based strategy families, cost-aware backtests, promotion gates, risk limits, and paper portfolio accounting.
 - Point-in-time local sentiment observations and a walk-forward candidate validation path that excludes a final holdout.
+- A bounded `LOCAL-LITE` research queue: one durable, research-only job at a time, with heartbeats, timeout, explicit cancellation requests, and safe interrupted-job recovery.
+- Cached local runtime telemetry for CPU/RAM/disk/network/API-process use, with optional NVIDIA telemetry when `nvidia-smi` is genuinely available.
 
-Experiments, durable job queues, model training, rigorous portfolio optimization, external event ingestion, and Cosmos/HPC support are planned—not implemented.
+Reproducible experiment artifacts, model training, rigorous portfolio optimization, external event ingestion, and Cosmos/HPC access are planned—not implemented.
 
 ## Architecture
 
@@ -54,7 +56,9 @@ cp .env.example .env
 
 Open `http://127.0.0.1:8000`. Read-only routes are available without a token. The normal local `launch` command creates a temporary token and signs the localhost dashboard in automatically for that run. Direct API calls require `Authorization: Bearer <PROJECT_INVEST_API_AUTH_TOKEN>`; API-only and non-local runs without a token return a safe `503` response.
 
-The workstation is read-only on refresh: chart and feature panels use already stored data and never trigger a provider request. Its runtime strip distinguishes API, storage, stored-market-data freshness, research-worker heartbeat, trading-worker heartbeat, and unavailable remote compute. `POST` cycle controls remain the only dashboard actions that can start a research or paper-trading cycle.
+The workstation is read-only on refresh: chart and feature panels use already stored data and never trigger a provider request. Its runtime strip distinguishes API, storage, stored-market-data freshness, research-worker heartbeat, trading-worker heartbeat, and unavailable remote compute. Research requests are queued to LOCAL-LITE; the authenticated paper-trading control remains explicit.
+
+The Runtime / Compute view samples on a bounded background interval (five seconds by default) and serves the latest cached sample. It never gathers telemetry in a dashboard request. If `psutil` or NVIDIA tooling is absent, the relevant metric is shown as unavailable rather than zero. The **Queue Research Cycle** control is authenticated and creates a local research-only job; it does not trade, submit orders, or auto-restart interrupted work.
 
 ## Running the system
 
@@ -71,6 +75,19 @@ The workstation is read-only on refresh: chart and feature panels use already st
 
 Do not run more than one worker of a given role against the same storage until the planned durable lease mechanism exists.
 
+### LOCAL-LITE monitoring and jobs
+
+`LOCAL-LITE` deliberately allows one research job at a time. Its CPU and memory configuration values are monitoring thresholds, not operating-system process-kill limits. Inspect cached status at `GET /api/runtime/monitor`, durable jobs at `GET /api/jobs`, and the combined component view at `GET /api/runtime/status`.
+
+On Windows, update dependencies after pulling this change and start as usual:
+
+```powershell
+.venv\Scripts\python -m pip install -e .[dev]
+.\run-project-invest.cmd
+```
+
+Jobs left `running` by a stopped executor are marked `failed` at next startup with a manual-resubmission message. A Cosmos backend interface exists only as an explicit `not_configured` placeholder. Before implementing it, confirm cluster authentication, scheduler, allocation, container/runtime, storage, network, logging, data-governance, cancellation, and quota requirements with the administrator.
+
 ## Configuration and data safety
 
 | Variable | Safe default | Meaning |
@@ -82,6 +99,8 @@ Do not run more than one worker of a given role against the same storage until t
 | `PROJECT_INVEST_API_AUTH_TOKEN` | unset | Required for cycle-triggering API routes. Never commit it. |
 | `PROJECT_INVEST_STORAGE_BACKEND` | `local` | `local` or configured `postgres`. |
 | `PROJECT_INVEST_RESEARCH_LOOP_ENABLED` | `false` | Embedded API loops are unsupported and fail startup. |
+| `PROJECT_INVEST_RUNTIME_MONITOR_INTERVAL_SECONDS` | `5` | Background telemetry sampling interval; dashboard requests read the cached sample. |
+| `PROJECT_INVEST_LOCAL_LITE_CONCURRENCY` | `1` | Fixed single-concurrency research queue profile. |
 
 Yahoo availability, timestamps, corporate actions, exchange calendars, and intraday coverage are limitations. Provider failures do not silently turn into synthetic data. Mock candles are clearly marked and are rejected at the paper-trading boundary unless deliberately enabled for tests/development.
 

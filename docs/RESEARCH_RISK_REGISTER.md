@@ -12,12 +12,12 @@
 | R-08 | High | Soft promotion permits weak candidates | Unproven strategies can receive paper allocation | Strict gate and explicit registry states | Weak-candidate cannot-buy regression |
 | R-09 | High | Optimizer ignores covariance/liquidity/uncertainty and is disconnected from execution | Misleading allocation outputs | Keep analytics-only; build constrained allocator later | Invalid/correlation/zero-exposure tests |
 | R-10 | High | Portfolio/order/event/memory writes are separate | Restart can leave unreconciled or duplicate state | Atomic command/event ledger and recovery | Failure-injection restart tests |
-| R-11 | High | Multiple execution owners without durable lease | Duplicate cycles and orders | One owner plus storage-backed lease | Multi-process duplicate-start test |
+| R-11 | High | Independently launched paper/research workers still lack a durable lease | Duplicate cycles and orders | One owner plus storage-backed lease | Multi-process duplicate-start test; LOCAL-LITE job claims cover research jobs only |
 | R-12 | High | Invalid settings silently revert to defaults | Unsafe configuration is masked | Strict schema + cross-field checks | Invalid configuration fails at startup |
 | R-13 | Medium | Runtime DDL and JSONB full scans lack migrations/indexes | Upgrade and performance hazards | Migration/versioning and indexed queries | Migration + Postgres integration tests |
 | R-14 | Medium | Trade memory excludes decisions/rejections | Biased future learning data | Decision-to-outcome event model | Rejected decision reconciliation test |
 | R-15 | Medium | Yahoo assumptions use US trading minutes for intraday history | Inaccurate NSE data coverage | Market-calendar-specific data policy | NSE calendar/data-quality tests |
-| R-16 | Medium | Health reports `ok` without storage/provider readiness | Operational failures hidden | Separate liveness/readiness checks | Outage health integration tests |
+| R-16 | Medium | Runtime monitor now reports API/storage/workers/jobs and cached local telemetry, but full provider/storage readiness probes remain incomplete | Operational failures can still be hidden | Separate liveness/readiness checks | Outage health integration tests |
 | R-17 | Medium | Docs reference absent `.env.example`, conflicting repository URL, and HTTP-first deployment | Misconfiguration and unsafe deployments | Correct, tested docs and safe example env | Documentation smoke test |
 | R-18 | Medium | No approval/access evidence for Cosmos | Unapproved use or infeasible design | Do not implement Cosmos adapter before written access/scheduler verification | Access checklist completed and adapter contract test |
 
@@ -26,5 +26,9 @@
 ### Mitigation update — 2026-10-21
 
 R-01 through R-05 have been materially reduced by bearer-protected operational routes, paper-only validation, explicit mock provenance, point-in-time local sentiment, and a candidate-validation holdout. They are not eliminated: bearer tokens require secure deployment and rotation, and the final holdout is not yet persisted as an experiment artifact. R-10, R-11, R-13, R-14, R-16, and R-18 remain open.
+
+### Monitoring and LOCAL-LITE update — 2026-10-23
+
+The durable LOCAL-LITE queue atomically claims a queued local research job, records heartbeats and terminal state, and marks interrupted work failed rather than restarting it. This narrows duplicate execution risk for that queue only. It does not provide a lease for standalone research/trading workers, transactional portfolio reconciliation, or a configured Cosmos backend. Telemetry is cached, bounded, optional, and not used to kill processes or trigger orders.
 
 No critical risk is accepted for Phase One. The current application may remain a local development prototype only. It must not be described as production-ready, profitable, autonomous in an unrestricted sense, or suitable for live trading.

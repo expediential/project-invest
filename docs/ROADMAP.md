@@ -21,7 +21,7 @@ Acceptance criteria: no route/configuration can create live orders; provider/sto
 
 ## Phase Two — Reproducible experiments
 
-Implement a laptop-first experiment definition/run/result/artifact registry with immutable snapshots, code revision, redacted configuration, dataset/feature identities, deterministic seed, bounded queue, cancellation, deduplication, and status lifecycle. Do not add Cosmos dependency.
+**Partially implemented (2026-10-23):** LOCAL-LITE now persists research-job IDs, configuration, backend, queued/running/succeeded/failed/cancelled state, claims, heartbeats, timeout, cancellation request, and restart recovery. It intentionally does not yet provide experiment artifacts, code/data revision snapshots, equivalent-submission deduplication, or reproducibility guarantees. Do not add Cosmos dependency.
 
 Acceptance criteria: equivalent submission deduplicates; a saved specification reproduces a completed local run; failed/cancelled/rejected runs are durable and explainable.
 
@@ -69,7 +69,7 @@ Acceptance criteria: local backend remains functional when Cosmos is unavailable
 
 ## Phase Ten — Dashboard and observability
 
-**In progress (2026-10-21):** the active dashboard preserves its established controls while the API exposes persisted portfolio accounting, performance history, positions, fills versus decision events, stored-data quality, liveness, safe settings, and honest `not_configured` Cosmos status. Experiments, rankings, allocation, model/version metadata, readiness, replay, and remote-job telemetry remain unimplemented.
+**In progress (2026-10-23):** the workstation includes bounded background local telemetry, optional truthful NVIDIA status, persistent LOCAL-LITE job status, and explicit empty/stale/unavailable states alongside portfolio and data views. Experiments, rankings, allocation, model/version metadata, readiness, replay, and remote-job telemetry remain unimplemented.
 
 Incrementally expose experiments, rankings, allocation, health, memory, replay, and data quality with safe empty/error/stale states. Preserve API compatibility or version changes.
 

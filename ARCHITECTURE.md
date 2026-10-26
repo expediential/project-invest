@@ -20,6 +20,12 @@ This repository implements the first runnable slice of a larger quant research o
   - portfolio risk controls
 - `src/project_invest/services/paper_trading.py`
   - simulated exchange and portfolio updates
+- `src/project_invest/services/runtime_monitor.py`
+  - bounded background local telemetry cache with optional NVIDIA discovery
+- `src/project_invest/services/job_queue.py`
+  - durable `LOCAL-LITE` research-only queue with atomic claims and restart recovery
+- `src/project_invest/services/execution_backends.py`
+  - local/remote execution contract; Cosmos is explicitly unconfigured
 - `src/project_invest/execution/`
   - execution mode boundary between paper and live
 - `src/project_invest/api/`
@@ -74,6 +80,17 @@ worker -> research loop -> same repository layer -> postgres
 ```
 
 The API should not own the continuous worker loop in production. Run the worker as a separate process or container.
+
+## Runtime monitor and job boundary
+
+```text
+background monitor -> bounded in-memory sample cache -> /api/runtime/monitor -> dashboard
+authenticated job submit -> durable storage -> atomic local claim -> research-only cycle -> durable result state
+```
+
+The monitor does not block HTTP requests and does not retain unlimited samples. The local executor is fixed at one concurrent research job and passes `execute_trades=False`; it is not a paper-trading or live-execution queue. A job that was running when its executor stops is marked failed on recovery and never automatically rerun. Storage-level atomic claims prevent two local executors from taking the same queued job. The existing independently launched worker processes still require their own durable lease design.
+
+`UnconfiguredCosmosBackend` defines only submit/status/result concepts. It cannot connect, schedule, upload data, or bypass validation/risk/paper boundaries.
 
 ## What should deepen next
 
